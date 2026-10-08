@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# development mailbox used when SMTP is not configured
+/tmp
+
+/app/generated/prisma
