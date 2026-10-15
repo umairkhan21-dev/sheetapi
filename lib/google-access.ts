@@ -3,6 +3,8 @@ import {
   GoogleTokenRefreshError,
   refreshGoogleAccessToken,
 } from "@/lib/google";
+import { GoogleDriveError } from "@/lib/google-sheets";
+import { GoogleSheetsError } from "@/lib/google-worksheets";
 import { prisma } from "@/lib/prisma";
 
 type StoredGoogleConnection = {
@@ -53,4 +55,58 @@ export function createGoogleAccessTokenResolver(
       return accessToken;
     },
   };
+}
+
+export class GoogleNotConnectedError extends Error {
+  constructor() {
+    super("Google Sheets is not connected");
+    this.name = "GoogleNotConnectedError";
+  }
+}
+
+export async function withGoogleAccessToken<T>(
+  userId: number,
+  run: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  const connection = await prisma.googleConnection.findUnique({
+    where: { userId },
+    select: {
+      accessToken: true,
+      refreshToken: true,
+      expiresAt: true,
+    },
+  });
+
+  if (!connection) {
+    throw new GoogleNotConnectedError();
+  }
+
+  const resolver = createGoogleAccessTokenResolver({
+    userId,
+    accessToken: connection.accessToken,
+    refreshToken: connection.refreshToken,
+    expiresAt: connection.expiresAt,
+  });
+  const accessToken = await resolver.resolve();
+
+  try {
+    return await run(accessToken);
+  } catch (error) {
+    if (
+      !isUnauthorizedGoogleError(error) ||
+      resolver.didRefresh ||
+      !connection.refreshToken
+    ) {
+      throw error;
+    }
+
+    return run(await resolver.resolve(true));
+  }
+}
+
+function isUnauthorizedGoogleError(error: unknown) {
+  return (
+    (error instanceof GoogleDriveError || error instanceof GoogleSheetsError) &&
+    error.httpStatus === 401
+  );
 }

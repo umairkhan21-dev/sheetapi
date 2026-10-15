@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { secondaryButtonClass } from "@/app/dashboard/ui";
 
-export function LogoutButton() {
+export function LogoutButton({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const submitting = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,18 +42,25 @@ export function LogoutButton() {
   }
 
   return (
-    <div className="mt-4">
+    <div className={compact ? "relative" : "mt-4"}>
       <button
         type="button"
         onClick={handleLogout}
         disabled={pending}
         aria-busy={pending}
-        className="rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium hover:bg-zinc-50 disabled:opacity-60"
+        className={secondaryButtonClass}
       >
         {pending ? "Logging out…" : "Log out"}
       </button>
       {error ? (
-        <p role="alert" className="mt-2 text-sm text-red-700">
+        <p
+          role="alert"
+          className={
+            compact
+              ? "absolute right-0 z-30 mt-2 w-56 rounded-lg border border-red-200 bg-white p-2 text-left text-xs text-red-700 shadow-sm"
+              : "mt-2 text-sm text-red-700"
+          }
+        >
           {error}
         </p>
       ) : null}

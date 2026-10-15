@@ -367,15 +367,34 @@ Current landing page exists with:
 
 ### Dashboard
 
-A basic dashboard exists.
+The signed-in dashboard is a single application shell:
 
-It currently shows:
+-   Left sidebar on desktop
+-   Top header with the signed-in name, email, and logout
+-   Main content area
+-   Menu button for narrow screens
+-   The active section is highlighted
 
--   Connect Google Sheets
--   Connected state
--   Reconnect option
+Routes:
 
-The dashboard is intentionally minimal at this stage.
+``` text
+/dashboard
+/dashboard/apis
+/dashboard/apis/new
+/dashboard/apis/{apiId}
+/dashboard/sheets
+/dashboard/settings
+```
+
+`/dashboard` is the overview. It shows a short welcome, Google connection status, the signed-in user's API count, and shortcuts. Google OAuth still returns here, including the connected and error messages.
+
+`/dashboard/apis` lists that user's API configurations. Each row can rename the display name, enable or disable the API, or delete it. Create API opens `/dashboard/apis/new`. `/dashboard/apis/{apiId}` shows one API the user owns: endpoint URL, linked spreadsheet and worksheet, API keys, the worksheet preview, and the same rename, enable, disable, and delete actions. Another user's API id returns the not-found page.
+
+`/dashboard/sheets` has the Google connection, spreadsheet picker, available spreadsheets, Select, Open, Disconnect, worksheet tabs, and the table/JSON preview. Disconnect removes that user's saved spreadsheet selection after confirmation. It does not delete or edit the Google spreadsheet.
+
+`/dashboard/settings` shows the account name, email, logout, and the existing Google connect or reconnect action. When Google is connected, it also offers Disconnect Google account. The same action is next to the connection status on the overview and Google Sheets pages.
+
+A signed-out visit to `/dashboard` still shows the sign-in message and any Google connection error. Other dashboard routes redirect to `/login`. No database migration was added for this UI.
 
 ### Spreadsheet listing
 
@@ -402,12 +421,788 @@ OAuth scope remains:
 `https://www.googleapis.com/auth/drive.file`
 
 That scope does not list every spreadsheet in the user's Drive. The
-Drive API returns only spreadsheets this app can already access. An
-empty list means an explicit file-selection step, such as Google
-Picker, is required before existing spreadsheets can be chosen. The
-scope was not broadened. Google Picker is not implemented yet.
+Drive API returns only spreadsheets this app can already access.
+
+### Google Picker
+
+Implemented. A connected user can choose an existing spreadsheet from
+the dashboard. The scope was not broadened.
+
+``` text
+GET  /api/google/picker
+GET  /api/google/sheets/selection
+POST /api/google/sheets/selection
+DELETE /api/google/sheets/selection/:spreadsheetId
+DELETE /api/auth/google
+```
+
+Google Picker runs in the browser. `drive.file` requires
+`PickerBuilder.setAppId` with the Cloud project number, and
+`setOAuthToken` requires the current access token in that browser
+session. The refresh token and client secret stay on the server. The
+access token is not logged or stored in `localStorage`. The browser
+sends only the spreadsheet ID. The server loads that file with the
+stored Google connection, checks that it is a spreadsheet this app can
+access, and then saves the ID, name, and modified time on
+`SelectedSpreadsheet`. Spreadsheet rows are not stored.
+
+Manual Google Cloud setup:
+
+-   Enable the Google Picker API
+-   Create a browser API key
+-   If the key is restricted to websites, allow the app origin and
+    `https://docs.google.com/*`
+-   If the key is restricted to APIs, allow the Google Picker API
+-   Set `GOOGLE_PICKER_API_KEY`
+-   Set `GOOGLE_APP_ID` to the Cloud project number when it should not
+    be taken from the numeric prefix of `GOOGLE_CLIENT_ID`
+
+### Worksheet preview
+
+Implemented for a spreadsheet already saved on `SelectedSpreadsheet`.
+Spreadsheet rows stay in Google Sheets.
+
+``` text
+GET /api/google/sheets/:spreadsheetId
+GET /api/google/sheets/:spreadsheetId/preview?sheetId=
+```
+
+The first route returns the spreadsheet id, name, and worksheet tabs.
+The preview route reads one worksheet with the user's stored Google
+connection, refreshes an expired access token when a refresh token
+exists, and returns the header row plus data rows as strings. The
+dashboard shows those rows as a table and as JSON. The preview is
+limited to 100 data rows and 50 columns. Nothing from the sheet is
+written to MySQL.
+
+The existing Select button still saves a spreadsheet. After that save,
+and from Open on a chosen spreadsheet, the dashboard loads the
+worksheet tabs.
+
+The Google Sheets API must be enabled in the same Cloud project. The
+OAuth scope is unchanged.
+
+### API configuration and public read
+
+Implemented. An authenticated user can create one API configuration
+for a spreadsheet already saved on `SelectedSpreadsheet` and one of
+that spreadsheet's worksheets. Spreadsheet rows stay in Google Sheets.
+
+``` text
+POST /api/apis
+GET  /api/v1/{slug}
+```
+
+`POST /api/apis` requires the SheetAPI session. It checks that the
+spreadsheet is saved for the current user, that the worksheet id
+exists on that spreadsheet, and that the endpoint slug is not already
+used. Slugs are globally unique because the public URL has no user
+segment. The handler stores the API name, normalized slug, Google
+spreadsheet id, worksheet id, and worksheet title. It does not store
+rows, access tokens, or refresh tokens. New configurations are
+`ACTIVE`.
+
+The Create API form is at `/dashboard/apis/new`. The user chooses a
+saved spreadsheet, chooses a worksheet, enters a name, and can enter a
+slug. A blank slug is generated from the name. The success state shows
+the API name, spreadsheet, worksheet, and URL, with a link to that
+API's page.
+
+``` text
+GET /api/v1/products
+```
+
+returns the worksheet as a JSON array of string-valued objects. The
+read uses the configuration owner's stored Google connection and the
+spreadsheet id stored on the configuration. Callers cannot substitute
+another spreadsheet id. A missing configuration returns 404. A
+`DISABLED` configuration returns 403 and no rows. If the saved
+spreadsheet selection has been removed, the route returns 404
+`SPREADSHEET_NOT_FOUND` and no rows. If the owner has no Google
+connection, it returns 503 `GOOGLE_NOT_CONNECTED` and tells the caller
+to reconnect Google Sheets. It does not return rows from another
+spreadsheet.
+
+`GET /api/v1/{slug}` requires `Authorization: Bearer <key>`. The
+response is not cached (`Cache-Control: no-store`).
+The public read is not limited to the dashboard preview of 100 rows
+and 50 columns. It rejects a worksheet above 10,000 data rows, 200
+columns, or 50,000 characters in one cell instead of returning a
+partial body.
+
+Migration `20261012080933_add_api_configuration` creates `Api` and was
+applied to the local MariaDB database. The database was not reset.
+
+Files created:
+
+``` text
+prisma/migrations/20261012080933_add_api_configuration/migration.sql
+lib/api-config.ts
+lib/api-config.test.ts
+lib/google-worksheets.records.test.ts
+lib/public-api-error.ts
+lib/public-api-error.test.ts
+app/api/apis/route.ts
+app/api/v1/[slug]/route.ts
+app/dashboard/create-api-form.tsx
+```
+
+Files modified:
+
+``` text
+prisma/schema.prisma
+lib/google-worksheets.ts
+app/dashboard/page.tsx
+product.md
+```
+
+Create request:
+
+``` http
+POST /api/apis
+Content-Type: application/json
+```
+
+``` json
+{
+  "name": "Products API",
+  "slug": "products",
+  "spreadsheetId": "spreadsheet-id",
+  "worksheetId": 0
+}
+```
+
+`slug` may be omitted. `worksheetId` is the Google sheet id, not a
+title supplied by the browser.
+
+Create response:
+
+``` json
+{
+  "success": true,
+  "api": {
+    "id": 1,
+    "name": "Products API",
+    "slug": "products",
+    "spreadsheetId": "spreadsheet-id",
+    "spreadsheetName": "Products",
+    "worksheetId": 0,
+    "worksheetName": "Sheet1",
+    "status": "ACTIVE",
+    "url": "http://localhost:3000/api/v1/products",
+    "createdAt": "2026-10-12T00:00:00.000Z"
+  }
+}
+```
+
+Public response:
+
+``` json
+[
+  {
+    "id": "1",
+    "name": "Pen",
+    "price": "20"
+  }
+]
+```
+
+Error response:
+
+``` json
+{
+  "success": false,
+  "error": {
+    "code": "SLUG_TAKEN",
+    "message": "That endpoint slug is already in use. Choose another."
+  }
+}
+```
+
+Checks run for this milestone:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   `npx tsx --test` on the API configuration, worksheet record, and
+    public error tests passed: 18 tests
+-   HTTP checks passed for signed-out creation, invalid input, an
+    unsaved spreadsheet, another user's spreadsheet, a duplicate slug,
+    a disabled API, an enabled API with no Google connection, a removed
+    spreadsheet selection, and Google authorization failure. The
+    authorization failure did not create a row
+-   Mocked worksheet tests covered an empty sheet, a header-only sheet,
+    a missing worksheet id, values longer than the preview cell cap,
+    and more than 100 rows
+-   A live Google read passed. `GET /api/v1/{slug}` returned
+    `application/json`, 4 objects, and the same JSON as a direct
+    Google Sheets read of that saved worksheet. The temporary
+    configuration was deleted afterward
+-   The dashboard was exercised in the browser: signed-out state,
+    login, worksheet loading, invalid slug, success state, duplicate
+    slug, the existing worksheet preview, logout, and a 390px-wide
+    layout
+-   After the temporary account was removed, the generated URL
+    returned 404
+
+A live empty worksheet and a live unknown worksheet id were not
+executed against Google. Those cases were covered with mocked Google
+responses. The fake-token HTTP check covered an authorization failure,
+not a successful metadata response that omits the worksheet.
+
+### Audit on 12 October 2026
+
+The API configuration and generated GET were checked again against
+the code, MySQL, and the running local app. No product code was
+changed.
+
+Verified:
+
+-   `POST /api/apis` requires a SheetAPI session and writes an `Api`
+    row through Prisma. A live create stored the signed-in user's id,
+    the saved spreadsheet id, the Google worksheet id, and the
+    worksheet title returned by Google. The temporary row was deleted
+    after the check.
+-   `Api.slug` has a unique index. Names and slugs are validated and
+    normalized. A duplicate slug returns 409 and does not create a
+    second row.
+-   `GET /api/v1/{slug}` loads that row and reads only its stored
+    spreadsheet id and worksheet id. A `spreadsheetId` query parameter
+    did not change the response.
+-   That live response was `application/json`, an array of 3 objects
+    with 4 columns, and the same JSON as a direct Google Sheets read
+    of the configured worksheet. The handler has no hardcoded rows.
+-   An unknown or invalid slug returns 404. A disabled configuration
+    returns 403 and no rows. An enabled configuration with no Google
+    connection returns 503. A stored access token Google rejects, with
+    no refresh token, returns 503 `GOOGLE_REAUTH_REQUIRED` and no rows.
+    A removed spreadsheet selection returns 404. These responses do
+    not include Google tokens.
+-   `POST /api/apis` returns 401 without a session and 404 when the
+    spreadsheet is not saved for that user, including when the id
+    belongs to another user. No `Api` row is created in those cases.
+-   Create and public responses do not include access tokens, refresh
+    tokens, or the client secret. Those routes log error names and
+    Google status kinds, not credential values.
+-   `npx tsc --noEmit`, `npm run lint`, and the 18 existing API tests
+    passed.
+
+Not implemented:
+
+-   At the time of this audit, API key generation, storage, and
+    verification were not present. There was no `ApiKey` model, no key
+    route, and `GET /api/v1/{slug}` did not read an `Authorization`
+    header.
+-   Dashboard routes to list, disable, rename, or delete an API
+    configuration. `DISABLED` is enforced when present in MySQL, and
+    the dashboard cannot set it yet.
+-   A live Google `invalid_grant` refresh failure was not triggered
+    on the real connection.
+
+No defect was found in the implemented create or read path at the
+time of that audit. API key enforcement was added afterward.
+
+### API keys
+
+Implemented. Each API can have named keys. The database stores a
+SHA-256 hash and a short display prefix. The raw key is returned only
+by the create response, and the dashboard shows it only until the user
+leaves or reloads the page.
+
+``` text
+GET  /api/apis
+GET  /api/apis/{apiId}/keys
+POST /api/apis/{apiId}/keys
+POST /api/apis/{apiId}/keys/{keyId}/revoke
+```
+
+All four routes require the SheetAPI session. The API id must belong
+to the signed-in user. Another user's API returns 404 for list,
+create, and revoke. Key names use the same 80-character rules as API
+names. The server generates the key. A key supplied by the client is
+ignored.
+
+A new key looks like `sk_live_` followed by 32 bytes of
+`crypto.randomBytes` encoded as base64url. The stored prefix is
+`sk_live_` plus the first 8 characters of that random portion. The
+hash is 64 lowercase hex characters. Responses do not include
+`keyHash`, Google tokens, or the raw key except for the one create
+response.
+
+`GET /api/v1/{slug}` reads the key only from the `Authorization`
+header. A missing key returns 401 `INVALID_API_KEY` with "A valid API
+key is required." A malformed, unknown, revoked, or other-API key
+returns 401 `INVALID_API_KEY` with "The API key is invalid or
+revoked." A query parameter is not accepted. These rejections happen
+before the saved-spreadsheet check and before any Google Sheets read.
+
+A valid key for a `DISABLED` API returns 403 and no rows. A valid key
+for an enabled API still requires the saved spreadsheet and the
+owner's Google connection. `lastUsedAt` is set only after those checks
+pass and before the worksheet read. Revoking a key sets `revokedAt`.
+Revoking it again returns the same revoked record.
+
+Migration `20261012110550_add_api_key` creates `ApiKey` with a unique
+index on `keyHash`, an index on `apiId`, and a cascading foreign key
+to `Api`. It was applied to the local MariaDB database. The database
+was not reset. Key expiration is not stored yet.
+
+Files created:
+
+``` text
+prisma/migrations/20261012110550_add_api_key/migration.sql
+lib/api-key.ts
+lib/api-key.test.ts
+lib/api-key-store.ts
+lib/api-key.access.test.ts
+lib/api-management-response.ts
+app/api/apis/[apiId]/keys/route.ts
+app/api/apis/[apiId]/keys/[keyId]/revoke/route.ts
+app/dashboard/api-created.ts
+app/dashboard/api-keys.tsx
+```
+
+Files modified:
+
+``` text
+prisma/schema.prisma
+lib/public-api-error.ts
+app/api/apis/route.ts
+app/api/v1/[slug]/route.ts
+app/dashboard/create-api-form.tsx
+app/dashboard/page.tsx
+product.md
+```
+
+Create request:
+
+``` http
+POST /api/apis/1/keys
+Content-Type: application/json
+```
+
+``` json
+{
+  "name": "Website"
+}
+```
+
+Create response:
+
+``` json
+{
+  "success": true,
+  "key": {
+    "id": 1,
+    "name": "Website",
+    "keyPrefix": "sk_live_abc12345",
+    "secret": "sk_live_abc12345example",
+    "createdAt": "2026-10-12T00:00:00.000Z",
+    "lastUsedAt": null,
+    "revokedAt": null
+  }
+}
+```
+
+`secret` is the raw key and is not returned again. List responses
+contain `id`, `name`, `keyPrefix`, `createdAt`, `lastUsedAt`, and
+`revokedAt`.
+
+Public request:
+
+``` http
+GET /api/v1/products
+Authorization: Bearer sk_live_example
+```
+
+API keys are managed on `/dashboard/apis/{apiId}`. That page can create
+a named key, show the full key once with a copy button and a warning,
+list prefixes and status, and revoke a key after confirmation. A reload
+does not show the raw key again.
+
+Checks run for this milestone:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   `npx tsx --test` on the API key, API configuration, worksheet
+    record, and public error tests passed: 25 tests
+-   The local `ApiKey` table has the expected columns, the unique
+    `keyHash` index, and the `apiId` index
+-   HTTP checks passed for signed-out listing, owner listing, another
+    user's list/create/revoke, an invalid key name, one-time secret
+    creation, prefix-only listing, a missing key, a query-string key,
+    a valid key with no saved spreadsheet, and revocation
+-   A live Google read passed. `GET /api/v1/{slug}` without a key
+    returned 401. The same URL with that API's bearer key returned
+    `application/json` and the same JSON as a direct Google Sheets
+    read: 3 rows. The temporary configuration and key were deleted
+-   The dashboard was exercised in the browser: login, the existing
+    Create API empty state, an empty key list, creation, the one-time
+    warning, the copy button, prefix-only listing, canceling
+    revocation, confirming revocation, and a reload that did not show
+    the full key
+-   In that browser, clipboard access was blocked. The page showed the
+    manual-copy message and left the key in the field
+-   Temporary HTTP and browser accounts were deleted afterward
 
 ------------------------------------------------------------------------
+
+### Dashboard navigation
+
+Implemented. The signed-in dashboard is no longer one stacked page.
+Overview, My APIs, Google Sheets, API details, and Settings use the
+shell described in the Dashboard section above. Existing authentication,
+Google OAuth, spreadsheet selection, worksheet preview, API creation,
+public reads, API-key hashing, and revocation are unchanged. Usage
+counts, billing, pagination, search, and filtering were not added.
+
+Checks run for this milestone:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   The browser covered signed-out `/dashboard`, registration, login,
+    logout, redirect from a protected dashboard route to `/login`,
+    overview API count, settings, Google Sheets connection status,
+    saved and available spreadsheet lists, Select, Open, worksheet
+    tabs, and the table/JSON preview
+-   Creating an API, creating a key, reading `/api/v1/{slug}` with that
+    key, and revoking the key were checked against the same endpoints
+    the dashboard uses. The list response did not include the raw key.
+    The temporary API, key, and browser account were deleted afterward
+-   A narrow layout showed the menu, active item, user, and logout. A
+    wide layout showed the sidebar and active item
+
+### Delete API
+
+Implemented. My APIs has a Delete action on each row, and the API
+details page has Delete API. Both open a confirmation dialog that
+states the Google spreadsheet and worksheet are not deleted. Confirming
+sends `DELETE /api/apis/{apiId}`.
+
+The route requires the SheetAPI session. It deletes one API only when
+the id belongs to that user. `ApiKey.apiId` uses `ON DELETE CASCADE`,
+so the API's keys are removed with the configuration. Saved spreadsheet
+rows, Google connections, and other APIs are not deleted. A missing
+configuration makes `GET /api/v1/{slug}` return 404 before any
+spreadsheet read. Another user's id and an unknown id both return 404.
+An invalid id returns 404. A signed-out request returns 401. The delete
+and cancel buttons stay disabled while the request is in progress.
+
+Checks run for this feature:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   `npx tsx --test` passed for the delete test and the existing API
+    key, API configuration, worksheet record, and public error tests
+-   A signed-in user deleted their own API. A second simultaneous
+    delete of that same id returned 404. The API row and its key hash
+    were gone. The saved spreadsheet row remained
+-   `GET /api/v1/{slug}` with the deleted key returned 404 and no rows.
+    The deleted key no longer authenticated against another API
+-   Another user received 404 and the API remained. Signed-out delete
+    returned 401 and the API remained. `nope`, `0`, `1.5`,
+    `9999999999`, and a missing numeric id returned 404
+-   The owner's other API and the other user's API still accepted
+    their keys. Those accounts have no Google connection, so the public
+    read returned 503 `GOOGLE_NOT_CONNECTED` after the key was accepted
+-   On the Google-connected account, a temporary API for an existing
+    worksheet returned that worksheet's JSON. After
+    `DELETE /api/apis/{apiId}`, the same URL returned 404. A direct
+    Google Sheets read of that worksheet had the same SHA-256 JSON hash
+    before and after. The saved spreadsheet row was unchanged. Another
+    API for that worksheet still returned the same JSON with its own
+    key. The temporary API and the extra key were removed
+-   In the browser, Cancel left the API in the list. Confirming showed
+    "Deleting…" with the actions disabled, then the success message and
+    the remaining API. Delete API on the details page did the same and
+    left the empty list. The dialog says the Google spreadsheet and
+    worksheet are not deleted. The disposable account's spreadsheet row
+    was still present after both APIs were gone, and that account was
+    then deleted
+-   The two deleted browser slugs returned 404
+    `{"success":false,"error":{"code":"NOT_FOUND","message":"This API was not found."}}`
+
+A database failure during delete was not triggered. The route returns
+500 `INTERNAL_ERROR` for that case. The browser was not used to display
+a failed delete; the 401 and 404 responses were checked over HTTP.
+
+### Rename and enable/disable
+
+Implemented. My APIs has Rename and Enable or Disable on each row. The
+API details page has the same actions. Rename changes only the display
+name. The endpoint slug, spreadsheet, worksheet, and API keys stay the
+same. Disable sets `Api.status` to `DISABLED`. Enable sets it back to
+`ACTIVE`.
+
+``` text
+PATCH /api/apis/{apiId}
+```
+
+The route requires the SheetAPI session. The id must belong to that
+user. Another user's id, an unknown id, and an invalid id return 404.
+A signed-out request returns 401. The body must include a name, a
+status, or both. A name uses the existing 80-character rules. Status
+must be `ACTIVE` or `DISABLED`. Slug, spreadsheet, and worksheet fields
+in the body are ignored. A blank name or any other status returns 400
+and does not write. A database error returns 500 `INTERNAL_ERROR`.
+
+`GET /api/v1/{slug}` already rejects a `DISABLED` API after the bearer
+key is accepted and before any spreadsheet read. The response is 403
+`API_DISABLED` with "This API is disabled." and no rows. A valid active
+key works again after the API is enabled. A revoked key stays revoked.
+
+No schema change was required. `Api.status` is already
+`ACTIVE` or `DISABLED` from migration
+`20261012080933_add_api_configuration`. `prisma migrate status`
+reported the local MariaDB database up to date. The database was not
+reset.
+
+The rename dialog explains that the endpoint stays the same. Save shows
+"Saving…" and disables the actions until the request finishes. A blank
+name stays in the dialog with the validation message. Enable and
+Disable show "Enabling…" or "Disabling…" and a success or error
+message. The buttons stay disabled while a request is in progress.
+
+Files created:
+
+``` text
+app/dashboard/manage-api.tsx
+lib/api-manage.test.ts
+```
+
+Files modified:
+
+``` text
+app/api/apis/[apiId]/route.ts
+app/dashboard/apis/page.tsx
+app/dashboard/apis/[apiId]/page.tsx
+app/dashboard/ui.tsx
+lib/api-config.ts
+lib/api-config.test.ts
+lib/api-key-store.ts
+product.md
+```
+
+Checks run for this feature:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   `npx tsx --test` on the API configuration, API management, API
+    delete, API key, worksheet record, and public error tests: 28
+    passed and 2 failed on the first run. The new management test that
+    reads a live Google worksheet failed because the connected account
+    had no existing API row. That test was changed to use a saved
+    spreadsheet and then passed. The existing delete test's live Google
+    case failed for the same empty-API reason and was not changed
+-   `npx tsx --test lib/api-manage.test.ts` then passed: 2 tests
+-   The ownership test renamed an API, confirmed the slug, spreadsheet,
+    worksheet, and key hash were unchanged, rejected a signed-out
+    request, another user, invalid ids, a blank name, and a bad status,
+    disabled the API, and confirmed a valid key returned 403
+    `API_DISABLED` with no rows and no last-used time. Re-enabling
+    returned 503 `GOOGLE_NOT_CONNECTED` for that account because it has
+    no Google connection. Revoke then returned 401. Delete removed the
+    API and its key and left the saved spreadsheet
+-   The live Google test renamed a temporary API, kept the slug and
+    key, and returned the same worksheet JSON. Disabling returned 403
+    and no rows. A direct Google Sheets read had the same SHA-256 JSON
+    hash before, during, and after. Re-enabling returned that same JSON
+    with the same key. Revoke returned 401. Delete returned 404. The
+    saved spreadsheet row was unchanged
+-   In the browser, a disposable account renamed an API from the list,
+    canceled a rename, saw the blank-name error, and saw "Saving…" with
+    the actions disabled. The endpoint slug stayed the same. Disable
+    showed "Disabling…", then Disabled, and the public read with that
+    API's new key returned 403 and no rows. The details page renamed
+    it again without changing the URL, then Enable showed "Enabling…"
+    and the same key returned 503 `GOOGLE_NOT_CONNECTED` because that
+    browser account has no Google connection. Canceling revocation left
+    the key active. Confirming revocation returned 401. Canceling
+    delete left the API. Confirming delete showed "Deleting…" and left
+    the other API in the list. The narrow layout showed Rename,
+    Disable, and Delete. The wide layout showed the sidebar and one
+    header row. The disposable account was deleted afterward
+
+A database failure during rename or status change was not triggered.
+
+### Verification pass on 14 October 2026
+
+The implemented authentication, API key, API management, and public read
+paths were exercised with automated tests. No application code was
+changed. Isolated accounts were deleted afterward. The real Google Sheet
+was not edited.
+
+`npx tsc --noEmit` passed. `npm run lint` passed. `npx tsx --test lib/*.test.ts`
+passed 42 tests, failed 0, and skipped 1.
+
+The skip is the live delete case in `lib/api-delete.test.ts`. The
+connected Google account had no active API with a saved spreadsheet, so
+that case was skipped instead of failed. The live rename test still
+created a temporary API on a readable saved spreadsheet, compared the
+public JSON with a direct Google read, disabled and re-enabled it, then
+deleted it. The worksheet JSON hash was the same before, during, and
+after, and the saved spreadsheet row was unchanged.
+
+A mocked Google response proved that a later worksheet snapshot is what
+`GET /api/v1/{slug}` returns. That did not write to the real spreadsheet.
+Successful `POST /api/apis` against Google, OAuth code exchange, and a
+live `invalid_grant` on the real connection were not run in that pass.
+The later verification ran the API creation against Google and an
+`invalid_grant` for a refresh token that is not stored. A successful
+callback code exchange still was not run.
+
+### Google integration verification on 14 October 2026
+
+The existing Google OAuth, Drive, Sheets, picker, selection, worksheet,
+API creation, and public read paths were tested. No application code
+was changed. The OAuth scope was not widened. The real spreadsheet was
+not edited. Temporary users, the temporary API, and its key were
+deleted. The stored Google connection's access-token hash, refresh-token
+hash, and `updatedAt` were the same after the live reads.
+
+`npx tsc --noEmit` passed. `npm run lint` passed. `npx tsx --test lib/*.test.ts`
+passed 59 tests, failed 0, and skipped 1.
+
+The skip is still the live delete case in `lib/api-delete.test.ts`.
+The connected account had no active API with a saved spreadsheet after
+the temporary verification API was removed.
+
+Mocked Google responses covered:
+
+-   Authorization-code exchange, including a response with no refresh
+    token, `invalid_grant`, a network failure, invalid JSON, and a
+    payload without an access token. The test client secret was not
+    copied into the error.
+-   Access-token refresh that keeps the previous refresh token when
+    Google omits a replacement, and that stores the replacement when
+    Google returns one.
+-   Refresh failures for an empty token, `invalid_grant`, another OAuth
+    error, a network failure, and invalid JSON. `invalid_grant` did not
+    change the temporary connection row.
+-   One retry after Google returns 401 for an unexpired access token.
+    The new access token was stored and the refresh token stayed the
+    same.
+-   Spreadsheet listing with a second page, duplicate ids, non-spreadsheet
+    files, trashed files, an empty list, a malformed list, 401, 403,
+    500, and a network failure.
+-   Spreadsheet validation for a real spreadsheet, a non-spreadsheet,
+    a missing file, and malformed JSON.
+-   Worksheet tabs, preview rows as strings, duplicate headers, an empty
+    sheet, a missing worksheet, a preview truncated at 100 data rows, a
+    mismatched spreadsheet id, a malformed values payload, 404, Sheets
+    API not enabled, 500, and a network failure.
+-   Worksheet error JSON that does not include a token-like message or
+    a stack trace.
+
+HTTP checks against `http://127.0.0.1:3000` covered signed-out Google
+routes, OAuth state mismatch, Google denial, a missing code, duplicate
+callback parameters, an oversized state, `error=server_error`, a
+token-like provider error, and a `bad-code` exchange. Google rejected
+that code. The redirect was `/dashboard?google=error&reason=failed`,
+the state cookie was cleared, and no connection row was stored. The
+redirect did not include the client secret or the code.
+
+A temporary signed-in user could not list another user's saved
+spreadsheet, open it, or preview it. Invalid ids and selection bodies
+returned 400. With no Google connection, listing, picker, worksheet
+open, and selection returned the existing not-connected errors. A
+browser-supplied spreadsheet id was not saved when Drive rejected the
+fake token. An expired fake access token and a fake refresh token made
+listing and picker return 403 `GOOGLE_REAUTH_REQUIRED`; the stored fake
+tokens were unchanged and were not in the response.
+
+Live Google access, using the already connected account, covered:
+
+-   `GET /api/google/sheets` returned 3 spreadsheets. The JSON hash
+    matched a direct Drive read. Tokens were not in the response.
+-   Saved spreadsheet ids from `GET /api/google/sheets/selection`
+    matched the database. Picker returned a session whose access-token
+    hash matched the stored token. The refresh token and client secret
+    were not in that response.
+-   `POST /api/google/sheets/selection` with an unknown id returned 404
+    `SPREADSHEET_NOT_FOUND` and did not add a row.
+-   Worksheet tabs and the preview JSON hash matched direct Sheets
+    reads. An unknown worksheet id returned 404 `WORKSHEET_NOT_FOUND`.
+-   `POST /api/apis` stored the worksheet title returned by Google.
+    `GET /api/v1/{slug}` with that API's bearer key returned the same
+    JSON hash as a direct read. After delete, the URL returned 404.
+    The direct worksheet hash was the same before and after.
+-   `refreshGoogleAccessToken` with a refresh token that is not the
+    stored one returned `invalid_grant` (`reauthRequired`). The stored
+    connection was unchanged.
+
+A live empty worksheet was not present on the readable saved
+spreadsheet. That case remains covered by the mocked preview. A
+successful browser consent code was not exchanged, so the callback's
+reconnect upsert did not run. The refresh helper's preservation of an
+omitted refresh token was tested with a mock and a temporary database
+row. The stored access token was still valid, so a live successful
+refresh of that connection was not required and was not forced. The
+spreadsheet list route's 401-then-success retry was not run against
+Google; the shared access-token helper's retry was mocked. Picker UI
+in the browser was not opened. A non-spreadsheet file was not submitted
+to the selection route; the parser rejects that file type in a mock.
+
+### Google connection management
+
+Implemented. A signed-in user can disconnect one saved spreadsheet or
+the Google account. No Prisma migration was added. `SelectedSpreadsheet`
+and `GoogleConnection` are removed with `deleteMany` scoped to the
+current user. API configurations, API keys, the SheetAPI account, and
+other users' rows stay.
+
+``` text
+DELETE /api/google/sheets/selection/:spreadsheetId
+DELETE /api/auth/google
+```
+
+Spreadsheet disconnect requires the SheetAPI session. The spreadsheet
+id must be a valid Google file id. The row must belong to the current
+user. Another user's id, a missing id, and an invalid id do not delete
+anything. The handler does not call Google Drive, so it cannot delete
+or edit the spreadsheet, its worksheets, or its rows.
+
+APIs that pointed at the removed selection stay `ACTIVE` and keep their
+keys. The dashboard shows **Spreadsheet disconnected** instead of
+Active. `GET /api/v1/{slug}` returns 404 `SPREADSHEET_NOT_FOUND` with
+"This API's spreadsheet selection was disconnected." and does not read
+Google. Saving that spreadsheet again restores the public read. Other
+saved spreadsheets keep working.
+
+Google account disconnect also requires the SheetAPI session. It loads
+only the current user's `GoogleConnection`. A `userId` in the request
+body is ignored. The server revokes the refresh token when one is
+stored, otherwise the access token, at
+`https://oauth2.googleapis.com/revoke`. The token is not written to the
+response or to logs. HTTP 200 means `revoked: true`. Any other result,
+including a network failure, still deletes the local credentials and
+returns `revoked: false` with a message that Google did not confirm
+revocation. A missing connection returns 404 `GOOGLE_NOT_CONNECTED`.
+
+Saved spreadsheet selections, API configurations, and API keys remain.
+An active API whose spreadsheet is still saved shows **Reconnect
+Google**. Its public read returns 503 `GOOGLE_NOT_CONNECTED` and
+"Reconnect Google Sheets before this API can return data." It does not
+return worksheet rows. Reconnect uses the existing
+`GET /api/auth/google` flow, which upserts `GoogleConnection`.
+
+The overview, Google Sheets page, and Settings page show Disconnect
+Google account next to the connection status. Saved spreadsheets have a
+Disconnect action. Both actions ask for confirmation, disable repeat
+submission, and show a pending label. Success and error text stay on
+the page. The Google result says whether revocation was confirmed.
+
+Limitations:
+
+-   A live Google revocation of the real stored refresh token was not
+    run. Revocation success is covered by a mocked HTTP 200. The route
+    test uses a fake token, so Google does not confirm revocation.
+-   If Google does confirm revocation, `drive.file` access to previously
+    picked files can be removed. Saved selection rows remain, and the
+    user may need to choose those spreadsheets again after reconnecting.
+-   A disabled API still shows Disabled. The detail page also says when
+    the spreadsheet or Google account is disconnected.
+-   The public legal page that explains how to disconnect Google is
+    still later work.
 
 # 7. Current Immediate Work
 
@@ -421,22 +1216,53 @@ Application authentication, including password reset, is implemented:
 /dashboard
 ```
 
-Spreadsheet listing is implemented:
+Spreadsheet listing, Google Picker selection, and disconnect are implemented:
 
 ``` text
-GET /api/google/sheets
+GET  /api/google/sheets
+GET  /api/google/picker
+GET  /api/google/sheets/selection
+POST /api/google/sheets/selection
+DELETE /api/google/sheets/selection/:spreadsheetId
+DELETE /api/auth/google
 ```
 
-The next product milestone is worksheet selection:
+Worksheet selection and data preview are implemented:
 
 ``` text
 GET /api/google/sheets/:spreadsheetId
+GET /api/google/sheets/:spreadsheetId/preview?sheetId=
 ```
 
-Because the OAuth scope is still `drive.file`, Google Picker or
-another explicit file-selection step may be required before a user
-can choose an existing spreadsheet. Do not broaden the scope to full
-Drive access.
+API configuration, hashed API keys, and a keyed public GET are
+implemented:
+
+``` text
+POST /api/apis
+GET  /api/apis
+PATCH /api/apis/{apiId}
+DELETE /api/apis/{apiId}
+GET  /api/apis/{apiId}/keys
+POST /api/apis/{apiId}/keys
+POST /api/apis/{apiId}/keys/{keyId}/revoke
+GET  /api/v1/{slug}
+```
+
+`GET /api/v1/{slug}` requires `Authorization: Bearer <key>`. The key
+must belong to that API and must not be revoked. Deleting an API
+removes that configuration and its keys. It does not delete the Google
+spreadsheet or worksheet. A disabled API returns 403 and no rows.
+Renaming changes the display name only. Do not broaden the OAuth scope.
+
+The dashboard navigation shell is implemented. Delete, rename, enable,
+and disable are implemented. Disconnecting a saved spreadsheet and
+disconnecting the Google account are implemented. The next product
+milestone is pagination for the public read. Do not add search,
+filtering, sorting, or worksheet writes before pagination.
+
+Because the OAuth scope is still `drive.file`, Google Picker is how a
+user grants access to an existing spreadsheet. Do not broaden the
+scope to full Drive access.
 
 ------------------------------------------------------------------------
 
@@ -864,9 +1690,17 @@ configured scope.
 
 Implemented. The handler refreshes an expired access token when a
 refresh token is stored. `drive.file` still applies, so this list is
-not the user's entire Drive. Worksheet selection is the next
-milestone. Google Picker is the likely way to grant access to an
-existing spreadsheet without widening the scope.
+not the user's entire Drive.
+
+Google Picker is implemented for choosing an existing spreadsheet
+without widening the scope. The server validates the picked file and
+stores its ID and metadata on `SelectedSpreadsheet`.
+
+Worksheet selection is implemented.
+`GET /api/google/sheets/:spreadsheetId` returns worksheet tabs for a
+saved spreadsheet. `GET /api/google/sheets/:spreadsheetId/preview`
+returns that worksheet's rows as strings for the dashboard preview.
+Rows are not stored in MySQL.
 
 ------------------------------------------------------------------------
 
@@ -874,7 +1708,7 @@ existing spreadsheet without widening the scope.
 
 ## Milestone 14. Spreadsheet detail
 
-Create endpoint:
+Implemented:
 
 ``` text
 GET /api/google/sheets/:spreadsheetId
@@ -911,7 +1745,14 @@ Return:
 
 ## Milestone 15. Read worksheet
 
-Create server-side functionality to read:
+A dashboard preview reads a selected worksheet. Generated public APIs
+are not part of this milestone.
+
+``` text
+GET /api/google/sheets/:spreadsheetId/preview?sheetId=
+```
+
+Server-side functionality reads:
 
 ``` text
 spreadsheet
@@ -987,6 +1828,11 @@ An API configuration represents:
 
 > This generated API is connected to this spreadsheet worksheet.
 
+Implemented as the `Api` model. `slug` is unique across all users.
+`status` is `ACTIVE` or `DISABLED`. Deleting a user deletes that
+user's API configurations. Spreadsheet rows and Google tokens are not
+columns on this model.
+
 ------------------------------------------------------------------------
 
 # 17. Phase 10 --- API Creation
@@ -1017,6 +1863,10 @@ Backend validates:
 -   Slug is unique
 
 Then create API configuration.
+
+Implemented. The dashboard form and `POST /api/apis` follow this
+flow. See the API configuration section in Current Project State for
+the request, response, and validation rules.
 
 ------------------------------------------------------------------------
 
@@ -1050,6 +1900,11 @@ raw key → hash → store hash
 
 Show the raw key only once when created.
 
+Implemented as `ApiKey`. `apiId` references `Api.id` and deletes with
+that API. `keyHash` is unique. `keyPrefix`, `name`, `createdAt`,
+`lastUsedAt`, and `revokedAt` are stored. `expiresAt` is not stored
+yet.
+
 ------------------------------------------------------------------------
 
 # 19. Phase 12 --- Generated REST API
@@ -1068,22 +1923,29 @@ Example:
 GET /api/v1/products
 ```
 
+The route returns the worksheet as JSON after the bearer key is
+accepted. A request without a usable key does not read Google Sheets.
+
 Request:
 
 ``` text
 Authorization: Bearer YOUR_API_KEY
 ```
 
-Flow:
+Implemented flow:
 
 ``` text
 Request
   ↓
 Find API by slug
   ↓
+Validate API key
+  ↓
 Validate API status
   ↓
-Validate API key
+Find saved spreadsheet
+  ↓
+Record last-used time
   ↓
 Find Google connection
   ↓
@@ -1210,24 +2072,19 @@ curl \
 
 ## Milestone 25. Dashboard redesign
 
-Dashboard sections:
+Implemented navigation:
 
 ``` text
 Overview
 My APIs
-Google Connections
-API Keys
-Usage
+Google Sheets
+API details
 Settings
 ```
 
-Dashboard should show:
-
--   Number of APIs
--   Requests this month
--   Active connections
--   Recent APIs
--   Recent requests later
+The overview shows connection status, API count, and shortcuts. API
+keys stay on the individual API page. Requests this month, usage, and
+recent request lists are not implemented.
 
 ------------------------------------------------------------------------
 
@@ -1244,7 +2101,10 @@ User can:
 -   Rename API
 -   Delete API
 
-Deletion should require confirmation.
+Delete, rename, enable, and disable are implemented. The list and the
+details page ask for confirmation before delete and state that the
+Google spreadsheet and worksheet are not deleted. Rename changes the
+display name only. Enable and disable change `Api.status`.
 
 ------------------------------------------------------------------------
 
@@ -1263,6 +2123,9 @@ User can:
 -   Set expiration later
 
 Never show complete old keys again.
+
+Create, name, revoke, prefix, creation date, and last-used date are
+implemented on the dashboard. Expiration remains later.
 
 ------------------------------------------------------------------------
 
@@ -1291,6 +2154,10 @@ If refresh fails:
 -   Mark connection as requiring reconnection
 -   Do not expose Google token details
 -   Tell user to reconnect Google
+
+Disconnecting the stored Google connection is implemented separately.
+See Google connection management above. This refresh behavior is
+unchanged.
 
 ------------------------------------------------------------------------
 
@@ -1824,6 +2691,8 @@ DATABASE_URL
 JWT_SECRET
 GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET
+GOOGLE_PICKER_API_KEY
+GOOGLE_APP_ID
 APP_URL
 SMTP_HOST
 SMTP_PORT
@@ -1895,6 +2764,15 @@ Every milestone should have tests.
 -   Reconnection updates same row
 -   Refresh token preserved
 -   Token never exposed
+-   Picker session requires the SheetAPI session and a Google connection
+-   Picker cancellation does not create a selection
+-   A browser-supplied spreadsheet ID is rejected until Drive confirms it
+-   Selected spreadsheet metadata is stored without spreadsheet rows
+-   Worksheet list requires a saved spreadsheet and the SheetAPI session
+-   Invalid spreadsheet IDs are rejected
+-   Unknown worksheet IDs are rejected
+-   Empty worksheets return no rows
+-   Preview values are strings and are not written to MySQL
 
 ## Spreadsheet tests
 
@@ -2013,7 +2891,8 @@ Explain clearly:
 -   What Google permissions are requested
 -   What data is stored
 -   How Google tokens are protected
--   How users can disconnect Google
+-   How users can disconnect Google. The in-app actions are implemented.
+    This public explanation is not.
 -   How API keys are handled
 -   How usage data is handled
 
@@ -2052,17 +2931,17 @@ Before launch:
 [ ] Logout complete
 [ ] Dashboard complete
 [ ] Google OAuth tested
-[ ] Spreadsheet list working
-[ ] Worksheet selection working
-[ ] Spreadsheet reading working
-[ ] API creation working
-[ ] API key creation working
-[ ] GET API working
+[x] Spreadsheet list working
+[x] Worksheet selection working
+[x] Spreadsheet reading working
+[x] API creation working
+[x] API key creation working
+[x] GET API working with an API key
 [ ] Search working
 [ ] Filtering working
 [ ] Pagination working
 [ ] Documentation working
-[ ] API key revocation working
+[x] API key revocation working
 [ ] Google token refresh working
 [ ] Rate limiting enabled
 [ ] Error handling complete
@@ -2138,10 +3017,14 @@ Current schema contains:
 User
 PasswordResetToken
 GoogleConnection
+SelectedSpreadsheet
+Api
+ApiKey
 ```
 
-The next major database models should be introduced only when their
-corresponding features are built.
+`ApiKey` stores a hash, display prefix, name, and revocation state.
+Do not add `ApiField`, `ApiUsage`, or `RequestLog` until those
+features are built.
 
 Recommended future schema:
 
@@ -2149,6 +3032,7 @@ Recommended future schema:
 User
  ├── PasswordResetToken
  ├── GoogleConnection
+ ├── SelectedSpreadsheet
  ├── Api
  │    ├── ApiKey
  │    ├── ApiField
@@ -2258,6 +3142,9 @@ Google Sheet
 JSON response
 ```
 
+`GET /api/v1/{slug}` now follows this flow. The bearer key is hashed
+and compared with the stored hash before any worksheet read.
+
 These three systems must not be mixed together.
 
 ------------------------------------------------------------------------
@@ -2271,8 +3158,9 @@ These rules are permanent product requirements.
 Never return or log:
 
 -   Google client secret
--   Google access token
 -   Google refresh token
+-   Google access token, except the current access token sent only to
+    the signed-in browser when opening Google Picker
 -   JWT secret
 -   Password hashes
 -   Raw password reset tokens
@@ -2486,47 +3374,42 @@ Do not jump ahead until the current milestone works.
 The project is currently between:
 
 ``` text
-Google connection
+API keys
         ↓
-Spreadsheet discovery
-        ↓
-Worksheet selection
+Pagination
 ```
 
-Password reset, Google account connection, and spreadsheet listing are
-implemented.
-
-`GET /api/google/sheets` is live. The dashboard can retrieve and
-display spreadsheets for a connected Google account. The OAuth scope
-remains `https://www.googleapis.com/auth/drive.file`.
-
-The immediate task is worksheet selection:
+Password reset, Google account connection, spreadsheet listing,
+worksheet preview, API configuration, API keys, and a keyed public GET
+are implemented.
 
 ``` text
-GET /api/google/sheets/:spreadsheetId
+POST /api/apis
+GET  /api/apis
+PATCH /api/apis/{apiId}
+DELETE /api/apis/{apiId}
+GET  /api/apis/{apiId}/keys
+POST /api/apis/{apiId}/keys
+POST /api/apis/{apiId}/keys/{keyId}/revoke
+GET  /api/v1/{slug}
 ```
 
-`drive.file` does not automatically expose existing spreadsheets. If
-the list is empty, Google Picker (or another explicit file-selection
-step) is required before worksheet selection can target a spreadsheet
-the user already owns. Do not replace `drive.file` with full Drive
-access.
+`GET /api/v1/{slug}` reads the configuration owner's Google Sheet only
+after a valid bearer key for that API is presented. Slugs are globally
+unique. Disabled configurations and missing selections do not return
+rows. A deleted configuration returns 404. The OAuth scope remains
+`https://www.googleapis.com/auth/drive.file`.
 
-Once a spreadsheet can be selected, the project moves into the actual
-core SheetAPI functionality:
+Dashboard navigation is implemented at `/dashboard`, `/dashboard/apis`,
+`/dashboard/apis/new`, `/dashboard/apis/{apiId}`, `/dashboard/sheets`,
+and `/dashboard/settings`. Rename, enable, disable, and delete are
+available from My APIs and from the API details page.
+
+The next milestone is pagination:
 
 ``` text
-Google Spreadsheet
-        ↓
-Worksheet
-        ↓
-Rows → JSON
-        ↓
-Generated API
-        ↓
-API key
-        ↓
-Developer request
+?page=1
+&limit=20
 ```
 
-That is the central milestone of the entire product.
+Do not add search, filtering, or write methods in that milestone.

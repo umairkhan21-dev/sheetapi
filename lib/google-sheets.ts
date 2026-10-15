@@ -21,6 +21,13 @@ export type SpreadsheetSummary = {
   modifiedTime: string | null;
 };
 
+export class SpreadsheetTypeError extends Error {
+  constructor() {
+    super("File is not a Google spreadsheet");
+    this.name = "SpreadsheetTypeError";
+  }
+}
+
 export class GoogleDriveError extends Error {
   readonly httpStatus: number;
   readonly reauthRequired: boolean;
@@ -158,6 +165,57 @@ function toSpreadsheetSummary(file: unknown): SpreadsheetSummary | null {
     name: record.name.trim(),
     modifiedTime: readModifiedTime(record.modifiedTime),
   };
+}
+
+export function isGoogleFileId(value: unknown): value is string {
+  return isFileId(value);
+}
+
+export async function getGoogleSpreadsheet(
+  accessToken: string,
+  fileId: string,
+): Promise<SpreadsheetSummary> {
+  const url = new URL(
+    `${GOOGLE_DRIVE_FILES_URL}/${encodeURIComponent(fileId)}`,
+  );
+  url.searchParams.set("fields", "id,name,mimeType,modifiedTime,trashed");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new GoogleDriveError(0, false);
+  }
+
+  if (!response.ok) {
+    throw await toDriveError(response);
+  }
+
+  let payload: unknown;
+
+  try {
+    payload = await response.json();
+  } catch {
+    throw new GoogleDriveError(0, false);
+  }
+
+  const spreadsheet = toSpreadsheetSummary(payload);
+
+  if (!spreadsheet) {
+    throw new SpreadsheetTypeError();
+  }
+
+  return spreadsheet;
 }
 
 function isFileId(value: unknown): value is string {

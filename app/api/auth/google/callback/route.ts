@@ -120,16 +120,68 @@ export async function GET(request: NextRequest) {
 
     return redirectToDashboard(request, "connected");
   } catch (error) {
-    if (error instanceof GoogleOAuthConfigError) {
-      console.error("Google OAuth is not configured");
-    } else if (error instanceof GoogleOAuthExchangeError) {
-      console.error("Google token exchange failed");
-    } else if (error instanceof GoogleAccountLookupError) {
-      console.error("Google account lookup failed");
-    } else {
-      console.error("Google connection could not be saved");
-    }
-
+    logOAuthCallbackError(error);
     return redirectToDashboard(request, "error", "failed");
   }
+}
+
+const TOKEN_LIKE =
+  /ya29\.|1\/\/|eyJ[A-Za-z0-9_-]{10,}|Bearer\s+\S+|access_token|refresh_token|client_secret/i;
+
+function logOAuthCallbackError(error: unknown) {
+  const stage = callbackFailureStage(error);
+  const name = error instanceof Error ? error.name : "UnknownError";
+  const rawMessage =
+    error instanceof Error ? error.message : "Google OAuth callback failed";
+  const record =
+    typeof error === "object" && error !== null
+      ? (error as Record<string, unknown>)
+      : null;
+  const prismaCode =
+    name.startsWith("Prisma") && typeof record?.code === "string"
+      ? record.code
+      : undefined;
+
+  console.error("Google OAuth callback failed", {
+    stage,
+    name,
+    message:
+      name.startsWith("Prisma") || TOKEN_LIKE.test(rawMessage)
+        ? name
+        : rawMessage.slice(0, 180),
+    httpStatus:
+      typeof record?.httpStatus === "number" ? record.httpStatus : undefined,
+    googleError:
+      typeof record?.googleError === "string" ? record.googleError : undefined,
+    googleReason:
+      typeof record?.googleReason === "string"
+        ? record.googleReason
+        : undefined,
+    googleStatus:
+      typeof record?.googleStatus === "string"
+        ? record.googleStatus
+        : undefined,
+    googleMessage:
+      typeof record?.googleMessage === "string" &&
+      !TOKEN_LIKE.test(record.googleMessage)
+        ? record.googleMessage
+        : undefined,
+    prismaCode,
+  });
+}
+
+function callbackFailureStage(error: unknown) {
+  if (error instanceof GoogleOAuthConfigError) {
+    return "config";
+  }
+
+  if (error instanceof GoogleOAuthExchangeError) {
+    return "token-exchange";
+  }
+
+  if (error instanceof GoogleAccountLookupError) {
+    return "account-lookup";
+  }
+
+  return "save-connection";
 }

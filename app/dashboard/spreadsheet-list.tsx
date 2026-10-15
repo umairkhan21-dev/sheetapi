@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  notifySpreadsheetOpened,
+  saveSpreadsheetSelection,
+  SPREADSHEET_SELECTION_EVENT,
+} from "@/app/dashboard/save-spreadsheet-selection";
+import { secondaryButtonClass } from "@/app/dashboard/ui";
 
 type SpreadsheetSummary = {
   id: string;
@@ -90,6 +96,10 @@ function formatModifiedTime(value: string) {
 
 export function SpreadsheetList() {
   const [state, setState] = useState<ListState>({ status: "loading" });
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [selectingId, setSelectingId] = useState<string | null>(null);
+  const selecting = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -139,17 +149,44 @@ export function SpreadsheetList() {
     }
 
     void loadSpreadsheets();
+    window.addEventListener(SPREADSHEET_SELECTION_EVENT, loadSpreadsheets);
 
     return () => {
       controller.abort();
+      window.removeEventListener(SPREADSHEET_SELECTION_EVENT, loadSpreadsheets);
     };
   }, []);
 
+  async function handleSelect(spreadsheetId: string) {
+    if (selecting.current) {
+      return;
+    }
+
+    selecting.current = true;
+    setSelectingId(spreadsheetId);
+    setSelectionError(null);
+    setSelectionMessage(null);
+    const result = await saveSpreadsheetSelection(spreadsheetId);
+    selecting.current = false;
+    setSelectingId(null);
+
+    if (!result.ok) {
+      setSelectionError(result.message);
+      return;
+    }
+
+    setSelectionMessage(`Selected ${result.spreadsheet.name}.`);
+    notifySpreadsheetOpened(result.spreadsheet);
+  }
+
   return (
-    <section className="mt-8" aria-labelledby="spreadsheets-heading">
-      <h2 id="spreadsheets-heading" className="font-medium">
-        Your spreadsheets
+    <section aria-labelledby="spreadsheets-heading">
+      <h2 id="spreadsheets-heading" className="text-base font-semibold">
+        Available spreadsheets
       </h2>
+      <p className="mt-1 text-sm text-zinc-600">
+        Spreadsheets SheetAPI can already access. Select one to save it.
+      </p>
 
       {state.status === "loading" ? (
         <p role="status" className="mt-4 text-sm text-zinc-600">
@@ -165,15 +202,24 @@ export function SpreadsheetList() {
 
       {state.status === "ready" && state.spreadsheets.length === 0 ? (
         <p className="mt-4 text-sm text-zinc-600">
-          No spreadsheets are available to SheetAPI yet. The current Google
-          permission only includes spreadsheets created or opened with this
-          app. Choosing an existing spreadsheet needs a file-selection step
-          such as Google Picker.
+          No spreadsheets are available to SheetAPI yet. Use Choose
+          spreadsheet to grant access to an existing spreadsheet.
+        </p>
+      ) : null}
+
+      {selectionMessage ? (
+        <p role="status" className="mt-4 text-sm text-zinc-600">
+          {selectionMessage}
+        </p>
+      ) : null}
+      {selectionError ? (
+        <p role="alert" className="mt-4 text-sm text-red-700">
+          {selectionError}
         </p>
       ) : null}
 
       {state.status === "ready" && state.spreadsheets.length > 0 ? (
-        <ul className="mt-4 flex flex-col gap-3">
+        <ul className="mt-4 divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
           {state.spreadsheets.map((spreadsheet) => {
             const modified = spreadsheet.modifiedTime
               ? formatModifiedTime(spreadsheet.modifiedTime)
@@ -182,19 +228,26 @@ export function SpreadsheetList() {
             return (
               <li
                 key={spreadsheet.id}
-                className="rounded-lg border border-zinc-200 p-4"
+                className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
               >
-                <p className="font-medium">{spreadsheet.name}</p>
-                {modified ? (
-                  <p className="mt-1 text-sm text-zinc-500">
-                    Last modified {modified}
-                  </p>
-                ) : null}
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{spreadsheet.name}</p>
+                  {modified ? (
+                    <p className="mt-0.5 text-sm text-zinc-500">
+                      Last modified {modified}
+                    </p>
+                  ) : null}
+                </div>
                 <button
                   type="button"
-                  className="mt-3 rounded-lg border border-zinc-200 px-4 py-2 text-sm font-medium hover:bg-zinc-50"
+                  onClick={() => {
+                    void handleSelect(spreadsheet.id);
+                  }}
+                  disabled={selectingId !== null}
+                  aria-busy={selectingId === spreadsheet.id}
+                  className={`${secondaryButtonClass} w-full shrink-0 sm:w-auto`}
                 >
-                  Select
+                  {selectingId === spreadsheet.id ? "Selecting…" : "Select"}
                 </button>
               </li>
             );

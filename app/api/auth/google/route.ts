@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { managementError, managementJson } from "@/lib/api-management-response";
 import {
   buildGoogleAuthorizationUrl,
   createOAuthState,
@@ -7,6 +8,7 @@ import {
   GOOGLE_OAUTH_STATE_COOKIE,
   googleOAuthStateCookieOptions,
 } from "@/lib/google";
+import { disconnectOwnedGoogleAccount } from "@/lib/google-connection";
 
 export const runtime = "nodejs";
 
@@ -59,5 +61,47 @@ export async function GET(request: NextRequest) {
     }
 
     return redirectToDashboard(request, "failed");
+  }
+}
+
+export async function DELETE() {
+  try {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return managementError("UNAUTHORIZED", "Sign in to continue.", 401);
+    }
+
+    const disconnected = await disconnectOwnedGoogleAccount(user.id);
+
+    if (!disconnected.ok) {
+      return managementJson(
+        {
+          success: false,
+          error: {
+            code: "GOOGLE_NOT_CONNECTED",
+            message: "Google Sheets is not connected.",
+          },
+        },
+        404,
+      );
+    }
+
+    return managementJson({
+      success: true,
+      revoked: disconnected.revoked,
+      affectedApis: disconnected.affectedApis,
+      message: disconnected.message,
+    });
+  } catch (error) {
+    console.error(
+      "Google disconnect failed",
+      error instanceof Error ? error.name : "UnknownError",
+    );
+    return managementError(
+      "INTERNAL_ERROR",
+      "Google Sheets could not be disconnected. Try again.",
+      500,
+    );
   }
 }

@@ -15,8 +15,15 @@ model User {
   passwordChangedAt   DateTime?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  googleConnection    GoogleConnection?
-  passwordResetTokens PasswordResetToken[]
+  googleConnection     GoogleConnection?
+  passwordResetTokens  PasswordResetToken[]
+  selectedSpreadsheets SelectedSpreadsheet[]
+  apis                 Api[]
+}
+
+enum ApiStatus {
+  ACTIVE
+  DISABLED
 }
 
 model PasswordResetToken {
@@ -41,4 +48,49 @@ model GoogleConnection {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SelectedSpreadsheet {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  spreadsheetId  String    @db.VarChar(256)
+  name           String    @db.VarChar(1024)
+  modifiedTime   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, spreadsheetId])
+}
+
+model Api {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  name           String    @db.VarChar(80)
+  slug           String    @unique @db.VarChar(64)
+  spreadsheetId  String    @db.VarChar(256)
+  worksheetId    Int
+  worksheetName  String    @db.VarChar(200)
+  status         ApiStatus @default(ACTIVE)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKeys        ApiKey[]
+
+  @@index([userId])
+  @@index([userId, spreadsheetId])
+}
+
+model ApiKey {
+  id         Int       @id @default(autoincrement())
+  apiId      Int
+  name       String    @db.VarChar(80)
+  keyHash    String    @unique @db.VarChar(64)
+  keyPrefix  String    @db.VarChar(32)
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  api        Api       @relation(fields: [apiId], references: [id], onDelete: Cascade)
+
+  @@index([apiId])
 }
