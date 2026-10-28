@@ -180,7 +180,7 @@ export function SpreadsheetPicker() {
           <h2 id="saved-spreadsheets-heading" className="text-base font-semibold">
             Saved spreadsheets
           </h2>
-          <p className="mt-1 text-sm text-zinc-600">
+          <p className="mt-1 text-sm text-slate-600">
             Open a saved spreadsheet to preview its worksheets.
           </p>
         </div>
@@ -197,7 +197,7 @@ export function SpreadsheetPicker() {
         </button>
       </div>
       {status.tone === "loading" || status.tone === "info" ? (
-        <p role="status" className="mt-3 text-sm text-zinc-600">
+        <p role="status" className="mt-3 text-sm text-slate-600">
           {status.message}
         </p>
       ) : null}
@@ -208,7 +208,7 @@ export function SpreadsheetPicker() {
       ) : null}
 
       {chosen.status === "loading" ? (
-        <p role="status" className="mt-4 text-sm text-zinc-600">
+        <p role="status" className="mt-4 text-sm text-slate-600">
           Loading chosen spreadsheets…
         </p>
       ) : null}
@@ -218,12 +218,12 @@ export function SpreadsheetPicker() {
         </p>
       ) : null}
       {chosen.status === "ready" && chosen.spreadsheets.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-600">
+        <p className="mt-4 text-sm text-slate-600">
           No spreadsheet has been chosen yet.
         </p>
       ) : null}
       {chosen.status === "ready" && chosen.spreadsheets.length > 0 ? (
-        <ul className="mt-4 divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <ul className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {chosen.spreadsheets.map((spreadsheet) => {
             const opened = openSpreadsheet?.id === spreadsheet.id;
 
@@ -231,12 +231,12 @@ export function SpreadsheetPicker() {
               <li
                 key={spreadsheet.id}
                 className={`flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${
-                  opened ? "bg-blue-50" : ""
+                  opened ? "bg-green-50" : ""
                 }`}
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{spreadsheet.name}</p>
-                  <p className="mt-0.5 text-sm text-zinc-500">
+                  <p className="mt-0.5 text-sm text-slate-500">
                     {formatModifiedTime(spreadsheet.modifiedTime) ??
                       "Modified time unavailable"}
                   </p>

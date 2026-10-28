@@ -30,7 +30,7 @@ type NoticeState = {
 };
 
 const rowActionClass =
-  "text-sm font-medium text-zinc-800 hover:underline disabled:cursor-not-allowed disabled:opacity-60";
+  "text-sm font-medium text-slate-800 hover:underline disabled:cursor-not-allowed disabled:opacity-60";
 
 export function ApiListRow({
   apiId,
@@ -271,7 +271,7 @@ function ApiEditor({
     <dialog
       ref={dialogRef}
       aria-labelledby={titleId}
-      className="m-auto w-[min(100%,28rem)] rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-900/40"
+      className="m-auto w-[min(100%,28rem)] rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-lg backdrop:bg-slate-900/40"
       onCancel={(event) => {
         if (pending === "rename") {
           event.preventDefault();
@@ -287,13 +287,13 @@ function ApiEditor({
         <h2 id={titleId} className="text-base font-semibold">
           Rename {name}
         </h2>
-        <p className="text-sm leading-6 text-zinc-600">
+        <p className="text-sm leading-6 text-slate-600">
           This changes the display name only. The endpoint stays{" "}
           <span className="font-mono text-xs">/api/v1/{slug}</span>. Spreadsheet,
           worksheet, and API keys stay the same.
         </p>
         <div>
-          <label htmlFor={inputId} className="block text-sm font-medium text-zinc-900">
+          <label htmlFor={inputId} className="block text-sm font-medium text-slate-900">
             API name
           </label>
           <input
@@ -307,7 +307,7 @@ function ApiEditor({
             required
             autoComplete="off"
             disabled={pending === "rename"}
-            className="mt-1.5 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-600/20 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </div>
         {renameError ? (
@@ -364,19 +364,19 @@ function ApiEditor({
             </StatusBadge>
           </div>
           {status === "DISABLED" ? (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-slate-600">
               Public reads are off. A valid API key cannot return spreadsheet
               data until this API is enabled.
             </p>
           ) : null}
           {!spreadsheetSaved ? (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-slate-600">
               This spreadsheet selection is disconnected. Public reads return
               no spreadsheet data until you save it again.
             </p>
           ) : null}
           {spreadsheetSaved && !googleConnected ? (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-slate-600">
               Google Sheets is disconnected. Public reads return no spreadsheet
               data until you reconnect.
             </p>
@@ -393,12 +393,12 @@ function ApiEditor({
       <div className={`grid gap-2 ${apiListColumnsClass} md:items-center md:gap-3`}>
         <Link
           href={`/dashboard/apis/${apiId}`}
-          className="text-sm font-medium text-blue-700 hover:underline"
+          className="text-sm font-medium text-green-700 hover:underline"
         >
           {name}
         </Link>
-        <p className="text-sm text-zinc-700">
-          <span className="text-zinc-500 md:hidden">Worksheet: </span>
+        <p className="text-sm text-slate-700">
+          <span className="text-slate-500 md:hidden">Worksheet: </span>
           {worksheetName}
         </p>
         <div>
@@ -406,11 +406,11 @@ function ApiEditor({
             {availabilityLabel.label}
           </StatusBadge>
         </div>
-        <p className="truncate font-mono text-xs text-zinc-600">
-          <span className="font-sans text-zinc-500 md:hidden">Endpoint: </span>
+        <p className="truncate font-mono text-xs text-slate-600">
+          <span className="font-sans text-slate-500 md:hidden">Endpoint: </span>
           /api/v1/{slug}
         </p>
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-slate-600">
           <span className="md:hidden">Created </span>
           {createdLabel}
         </p>

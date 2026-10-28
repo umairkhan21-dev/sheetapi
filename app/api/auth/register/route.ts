@@ -3,6 +3,12 @@ import bcrypt from "bcrypt";
 import { setAuthCookie } from "@/lib/auth";
 import { BCRYPT_ROUNDS, getPasswordValidationError } from "@/lib/password";
 import { prisma } from "@/lib/prisma";
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  clientIpFromRequest,
+  consumeRateLimit,
+} from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -30,6 +36,16 @@ async function readJsonObject(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const limited = await consumeRateLimit({
+      key: `auth:register:${clientIpFromRequest(request)}`,
+      limit: AUTH_RATE_LIMITS.register.limit,
+      windowSeconds: AUTH_RATE_LIMITS.register.windowSeconds,
+    });
+
+    if (!limited.ok) {
+      return authRateLimitResponse(limited);
+    }
+
     const body = await readJsonObject(request);
 
     if (!body) {

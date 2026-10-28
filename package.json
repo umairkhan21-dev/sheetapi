@@ -2,11 +2,19 @@
   "name": "sheet-best-clone",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^20.19 || ^22.12 || >=24.0"
+  },
   "scripts": {
+    "postinstall": "prisma generate --config prisma7.config.ts",
     "dev": "next dev",
-    "build": "next build",
+    "db:generate": "prisma generate --config prisma7.config.ts",
+    "db:migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
+    "build": "prisma generate --config prisma7.config.ts && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test lib/api-config.test.ts lib/api-key.test.ts lib/connected-account-test-lock.test.ts lib/google-worksheets.records.test.ts lib/jwt-secret.test.ts lib/prisma-deploy.test.ts lib/production-config.test.ts lib/public-api-cors.test.ts lib/public-pages.test.ts lib/public-api-filter.test.ts lib/public-api-pagination.test.ts lib/public-api-write.test.ts lib/rate-limit-ip.test.ts lib/secure-cookies.test.ts lib/token-crypto.test.ts",
+    "test:all": "tsx --test lib/*.test.ts"
   },
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.10.0",
@@ -29,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

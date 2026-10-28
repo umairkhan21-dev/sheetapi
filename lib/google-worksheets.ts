@@ -9,10 +9,16 @@ const MAX_SHEET_ID = 2_147_483_647;
 export const PREVIEW_ROW_LIMIT = 100;
 export const PREVIEW_COLUMN_LIMIT = 50;
 
-// Public API reads. These are not the dashboard preview limits.
+// Public API limits. These are not the dashboard preview limits.
+// Row 1 is the header. Rows 2–10001 are the 10,000 supported data rows.
+// The values read is A1:GS10002: column GS and row 10002 are probes.
+// A returned probe means the sheet is past the limit. Google omits empty
+// trailing rows and columns, so data that starts after an empty probe is
+// outside this read and is not visible here.
 export const API_DATA_ROW_LIMIT = 10_000;
 export const API_COLUMN_LIMIT = 200;
 export const API_CELL_LENGTH = 50_000;
+const API_LAST_DATA_ROW = API_DATA_ROW_LIMIT + 1;
 
 const REAUTH_REASONS = new Set([
   "authError",
@@ -198,6 +204,139 @@ export async function readWorksheetRecords(
   };
 }
 
+export async function appendWorksheetRow(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  values: readonly string[],
+  dataRowCount: number,
+): Promise<number> {
+  assertCellsWithinLimits(values);
+
+  if (
+    !Number.isSafeInteger(dataRowCount) ||
+    dataRowCount < 0 ||
+    dataRowCount >= API_DATA_ROW_LIMIT
+  ) {
+    throw new WorksheetTooLargeError();
+  }
+
+  const worksheet = await requireWorksheet(accessToken, spreadsheetId, sheetId);
+  const range = `'${quotedSheetTitle(worksheet.title)}'!A:${columnName(Math.max(values.length, 1))}`;
+  const url = new URL(
+    `${SHEETS_API_URL}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append`,
+  );
+  url.searchParams.set("valueInputOption", "USER_ENTERED");
+  url.searchParams.set("insertDataOption", "INSERT_ROWS");
+  url.searchParams.set("includeValuesInResponse", "false");
+
+  const payload = await fetchSheets(accessToken, url, {
+    method: "POST",
+    body: JSON.stringify({
+      majorDimension: "ROWS",
+      values: [values],
+    }),
+  });
+
+  return appendedRowNumber(payload);
+}
+
+export async function updateWorksheetRow(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  rowNumber: number,
+  values: readonly string[],
+): Promise<void> {
+  assertCellsWithinLimits(values);
+
+  if (
+    !Number.isSafeInteger(rowNumber) ||
+    rowNumber < 2 ||
+    rowNumber > API_LAST_DATA_ROW
+  ) {
+    throw new WorksheetTooLargeError();
+  }
+
+  const worksheet = await requireWorksheet(accessToken, spreadsheetId, sheetId);
+  const lastColumn = columnName(Math.max(values.length, 1));
+  const range = `'${quotedSheetTitle(worksheet.title)}'!A${rowNumber}:${lastColumn}${rowNumber}`;
+  const url = new URL(
+    `${SHEETS_API_URL}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`,
+  );
+  url.searchParams.set("valueInputOption", "USER_ENTERED");
+  url.searchParams.set("includeValuesInResponse", "false");
+
+  await fetchSheets(accessToken, url, {
+    method: "PUT",
+    body: JSON.stringify({
+      majorDimension: "ROWS",
+      range,
+      values: [values],
+    }),
+  });
+}
+
+export async function deleteWorksheetRow(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+  startIndex: number,
+  endIndex: number,
+): Promise<void> {
+  if (
+    !Number.isSafeInteger(startIndex) ||
+    !Number.isSafeInteger(endIndex) ||
+    startIndex < 1 ||
+    endIndex !== startIndex + 1 ||
+    startIndex > API_DATA_ROW_LIMIT
+  ) {
+    throw new WorksheetTooLargeError();
+  }
+
+  await requireWorksheet(accessToken, spreadsheetId, sheetId);
+
+  const url = new URL(
+    `${SHEETS_API_URL}/${encodeURIComponent(spreadsheetId)}:batchUpdate`,
+  );
+
+  await fetchSheets(accessToken, url, {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex,
+              endIndex,
+            },
+          },
+        },
+      ],
+    }),
+  });
+}
+
+async function requireWorksheet(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetId: number,
+) {
+  const spreadsheet = await readSpreadsheetWorksheets(
+    accessToken,
+    spreadsheetId,
+  );
+  const worksheet = spreadsheet.sheets.find((sheet) => sheet.id === sheetId);
+
+  if (!worksheet) {
+    throw new WorksheetNotFoundError();
+  }
+
+  return worksheet;
+}
+
 export function worksheetValuesToRecords(values: string[][]) {
   if (values.length > API_DATA_ROW_LIMIT + 1) {
     throw new WorksheetTooLargeError();
@@ -297,6 +436,64 @@ function worksheetRange(title: string) {
   const lastRow = PREVIEW_ROW_LIMIT + 2;
 
   return `'${quotedSheetTitle(title)}'!A1:${lastColumn}${lastRow}`;
+}
+
+function assertCellsWithinLimits(values: readonly string[]) {
+  if (values.length > API_COLUMN_LIMIT) {
+    throw new WorksheetTooLargeError();
+  }
+
+  for (const value of values) {
+    if (value.length > API_CELL_LENGTH) {
+      throw new WorksheetTooLargeError();
+    }
+  }
+}
+
+export function appendedRowNumber(payload: unknown) {
+  if (typeof payload !== "object" || payload === null) {
+    throw new GoogleSheetsError(0, "invalid");
+  }
+
+  const updates = (payload as { updates?: unknown }).updates;
+
+  if (typeof updates !== "object" || updates === null) {
+    throw new GoogleSheetsError(0, "invalid");
+  }
+
+  const updatedRange = (updates as { updatedRange?: unknown }).updatedRange;
+
+  if (
+    typeof updatedRange !== "string" ||
+    updatedRange.length === 0 ||
+    updatedRange.length > 500
+  ) {
+    throw new GoogleSheetsError(0, "invalid");
+  }
+
+  const match = /!([A-Za-z]+)(\d+)(?::([A-Za-z]+)(\d+))?$/.exec(updatedRange);
+
+  if (!match) {
+    throw new GoogleSheetsError(0, "invalid");
+  }
+
+  const startRow = Number(match[2]);
+  const endRow = match[4] == null ? startRow : Number(match[4]);
+
+  if (
+    !Number.isSafeInteger(startRow) ||
+    !Number.isSafeInteger(endRow) ||
+    startRow !== endRow ||
+    startRow < 2
+  ) {
+    throw new GoogleSheetsError(0, "invalid");
+  }
+
+  if (startRow > API_LAST_DATA_ROW) {
+    throw new WorksheetTooLargeError();
+  }
+
+  return startRow;
 }
 
 function apiWorksheetRange(title: string) {
@@ -481,15 +678,30 @@ function parseWorksheet(value: unknown) {
   };
 }
 
-async function fetchSheets(accessToken: string, url: URL) {
+async function fetchSheets(
+  accessToken: string,
+  url: URL,
+  init?: {
+    method?: string;
+    body?: string;
+  },
+) {
   let response: Response;
+  const method = init?.method ?? "GET";
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/json",
+  };
+
+  if (init?.body != null) {
+    headers["Content-Type"] = "application/json";
+  }
 
   try {
     response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
-      },
+      method,
+      headers,
+      body: init?.body,
       cache: "no-store",
       redirect: "error",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -502,8 +714,19 @@ async function fetchSheets(accessToken: string, url: URL) {
     throw await toSheetsError(response);
   }
 
+  if (response.status === 204) {
+    void response.body?.cancel();
+    return null;
+  }
+
+  const text = await response.text();
+
+  if (text.length === 0) {
+    return null;
+  }
+
   try {
-    return (await response.json()) as unknown;
+    return JSON.parse(text) as unknown;
   } catch {
     throw new GoogleSheetsError(0, "unavailable");
   }

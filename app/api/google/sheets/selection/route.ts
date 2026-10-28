@@ -3,7 +3,10 @@ import {
   GoogleOAuthConfigError,
   GoogleTokenRefreshError,
 } from "@/lib/google";
-import { createGoogleAccessTokenResolver } from "@/lib/google-access";
+import {
+  createGoogleAccessTokenResolver,
+  needsLegacyReseal,
+} from "@/lib/google-access";
 import {
   getGoogleSpreadsheet,
   GoogleDriveError,
@@ -11,6 +14,8 @@ import {
   SpreadsheetTypeError,
 } from "@/lib/google-sheets";
 import { prisma } from "@/lib/prisma";
+import { syncSelectedSpreadsheetNames } from "@/lib/selected-spreadsheet-sync";
+import { openSecret, openSecretIfPresent } from "@/lib/token-crypto";
 
 export const runtime = "nodejs";
 
@@ -65,15 +70,7 @@ export async function GET() {
       return errorResponse("UNAUTHORIZED", "Sign in to continue.", 401);
     }
 
-    const selections = await prisma.selectedSpreadsheet.findMany({
-      where: { userId: user.id },
-      orderBy: { updatedAt: "desc" },
-      select: {
-        spreadsheetId: true,
-        name: true,
-        modifiedTime: true,
-      },
-    });
+    const selections = await syncSelectedSpreadsheetNames(user.id);
 
     return Response.json(
       {
@@ -130,11 +127,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const refreshTokenPlain = openSecretIfPresent(connection.refreshToken);
     const accessTokens = createGoogleAccessTokenResolver({
       userId: user.id,
-      accessToken: connection.accessToken,
-      refreshToken: connection.refreshToken,
+      accessToken: openSecret(connection.accessToken),
+      refreshToken: refreshTokenPlain,
       expiresAt: connection.expiresAt,
+      resealLegacy: needsLegacyReseal(
+        connection.accessToken,
+        connection.refreshToken,
+      ),
     });
     let accessToken = await accessTokens.resolve();
     let spreadsheet;
@@ -146,7 +148,7 @@ export async function POST(request: Request) {
         error instanceof GoogleDriveError &&
         error.httpStatus === 401 &&
         !accessTokens.didRefresh &&
-        connection.refreshToken
+        refreshTokenPlain
       ) {
         accessToken = await accessTokens.resolve(true);
         spreadsheet = await getGoogleSpreadsheet(accessToken, spreadsheetId);

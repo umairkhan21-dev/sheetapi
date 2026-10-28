@@ -51,7 +51,7 @@ export default async function CreateApiPage({
       {googleConnected ? null : (
         <Notice tone="info">
           Connect Google Sheets before creating an API.{" "}
-          <a href="/api/auth/google" className="font-medium text-blue-700 hover:underline">
+          <a href="/api/auth/google" className="font-medium text-green-700 hover:underline">
             Connect Google Sheets
           </a>
         </Notice>

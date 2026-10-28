@@ -11,11 +11,14 @@ import {
   WorksheetNotFoundError,
   WorksheetTooLargeError,
 } from "@/lib/google-worksheets";
+import { PUBLIC_RESPONSE_HEADERS } from "@/lib/public-api-cors";
 
-const PUBLIC_HEADERS = {
-  "Cache-Control": "no-store",
-  "Access-Control-Allow-Origin": "*",
-};
+export {
+  PUBLIC_CORS_HEADERS,
+  publicCorsPreflightResponse,
+} from "@/lib/public-api-cors";
+
+const PUBLIC_HEADERS = PUBLIC_RESPONSE_HEADERS;
 
 export function publicApiErrorResponse(error: unknown) {
   if (error instanceof GoogleNotConnectedError) {
@@ -122,9 +125,11 @@ export function publicError(
     | "WORKSHEET_NOT_FOUND"
     | "WORKSHEET_TOO_LARGE"
     | "INVALID_INPUT"
+    | "RATE_LIMITED"
     | "INTERNAL_ERROR",
   message: string,
   status: number,
+  extraHeaders?: HeadersInit,
 ) {
   return Response.json(
     {
@@ -136,7 +141,10 @@ export function publicError(
     },
     {
       status,
-      headers: PUBLIC_HEADERS,
+      headers: {
+        ...PUBLIC_HEADERS,
+        ...extraHeaders,
+      },
     },
   );
 }
@@ -144,9 +152,15 @@ export function publicError(
 export function publicJson(body: unknown, status = 200) {
   return Response.json(body, {
     status,
-    headers: {
-      "Cache-Control": "no-store",
-      "Access-Control-Allow-Origin": "*",
-    },
+    headers: PUBLIC_HEADERS,
   });
+}
+
+export function publicRateLimitedResponse(retryAfterSeconds: number) {
+  return publicError(
+    "RATE_LIMITED",
+    "Too many requests. Try again later.",
+    429,
+    { "Retry-After": String(Math.max(1, retryAfterSeconds)) },
+  );
 }

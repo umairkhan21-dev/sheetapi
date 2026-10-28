@@ -20,6 +20,7 @@ import {
   readWorksheetRecords,
   WorksheetNotFoundError,
 } from "./google-worksheets";
+import { withConnectedAccountLock } from "./connected-account-test-lock";
 import { prisma } from "./prisma";
 
 const originalFetch = globalThis.fetch;
@@ -722,7 +723,8 @@ describe("Google sheet routes", { concurrency: 1 }, () => {
     }
   });
 
-  it("lists and previews the connected account without changing the spreadsheet", async (t) => {
+  it("lists and previews the connected account without changing the spreadsheet", (t) =>
+    withConnectedAccountLock(async () => {
     const connection = await prisma.googleConnection.findFirst({
       select: {
         userId: true,
@@ -837,7 +839,14 @@ describe("Google sheet routes", { concurrency: 1 }, () => {
       select: { id: true, spreadsheetId: true, name: true },
       orderBy: { id: "asc" },
     });
-    assert.deepEqual(savedAfterReject, savedBefore);
+    assert.deepEqual(
+      savedAfterReject.map(({ id, spreadsheetId }) => ({ id, spreadsheetId })),
+      savedBefore.map(({ id, spreadsheetId }) => ({ id, spreadsheetId })),
+    );
+    assert.equal(
+      savedAfterReject.every((row) => row.name.trim().length > 0),
+      true,
+    );
 
     let readable: {
       spreadsheetId: string;
@@ -1119,12 +1128,17 @@ describe("Google sheet routes", { concurrency: 1 }, () => {
       where: { userId: connection.userId },
       select: { accessToken: true, refreshToken: true, updatedAt: true },
     });
-    assert.deepEqual(savedAfter, savedBefore);
+    assert.deepEqual(
+      savedAfter.map(({ id, spreadsheetId }) => ({ id, spreadsheetId })),
+      savedBefore.map(({ id, spreadsheetId }) => ({ id, spreadsheetId })),
+    );
+    assert.equal(savedAfter.every((row) => row.name.trim().length > 0), true);
     assert.deepEqual(apisAfter, apisBefore);
     assert.equal(digest(storedConnection?.refreshToken ?? ""), before.refreshHash);
     assert.equal(digest(storedConnection?.accessToken ?? ""), before.accessHash);
     assert.equal(storedConnection?.updatedAt.getTime(), before.updatedAt);
-  });
+    }),
+  );
 });
 
 after(async () => {

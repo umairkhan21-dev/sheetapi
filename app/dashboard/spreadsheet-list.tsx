@@ -184,12 +184,12 @@ export function SpreadsheetList() {
       <h2 id="spreadsheets-heading" className="text-base font-semibold">
         Available spreadsheets
       </h2>
-      <p className="mt-1 text-sm text-zinc-600">
+      <p className="mt-1 text-sm text-slate-600">
         Spreadsheets SheetAPI can already access. Select one to save it.
       </p>
 
       {state.status === "loading" ? (
-        <p role="status" className="mt-4 text-sm text-zinc-600">
+        <p role="status" className="mt-4 text-sm text-slate-600">
           Loading your spreadsheets…
         </p>
       ) : null}
@@ -201,14 +201,14 @@ export function SpreadsheetList() {
       ) : null}
 
       {state.status === "ready" && state.spreadsheets.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-600">
+        <p className="mt-4 text-sm text-slate-600">
           No spreadsheets are available to SheetAPI yet. Use Choose
           spreadsheet to grant access to an existing spreadsheet.
         </p>
       ) : null}
 
       {selectionMessage ? (
-        <p role="status" className="mt-4 text-sm text-zinc-600">
+        <p role="status" className="mt-4 text-sm text-slate-600">
           {selectionMessage}
         </p>
       ) : null}
@@ -219,7 +219,7 @@ export function SpreadsheetList() {
       ) : null}
 
       {state.status === "ready" && state.spreadsheets.length > 0 ? (
-        <ul className="mt-4 divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <ul className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {state.spreadsheets.map((spreadsheet) => {
             const modified = spreadsheet.modifiedTime
               ? formatModifiedTime(spreadsheet.modifiedTime)
@@ -233,7 +233,7 @@ export function SpreadsheetList() {
                 <div className="min-w-0">
                   <p className="truncate font-medium">{spreadsheet.name}</p>
                   {modified ? (
-                    <p className="mt-0.5 text-sm text-zinc-500">
+                    <p className="mt-0.5 text-sm text-slate-500">
                       Last modified {modified}
                     </p>
                   ) : null}

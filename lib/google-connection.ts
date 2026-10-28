@@ -5,6 +5,7 @@ import {
 } from "@/lib/google-disconnect-copy";
 import { isGoogleFileId } from "@/lib/google-sheets";
 import { prisma } from "@/lib/prisma";
+import { openSecret, openSecretIfPresent } from "@/lib/token-crypto";
 
 export async function disconnectOwnedSpreadsheet(
   userId: number,
@@ -71,9 +72,9 @@ export async function disconnectOwnedGoogleAccount(userId: number) {
     return { ok: false as const, reason: "not_found" as const };
   }
 
-  const revocation = await revokeGoogleToken(
-    connection.refreshToken ?? connection.accessToken,
-  );
+  const refreshToken = openSecretIfPresent(connection.refreshToken);
+  const accessToken = openSecret(connection.accessToken);
+  const revocation = await revokeGoogleToken(refreshToken ?? accessToken);
   const deleted = await prisma.googleConnection.deleteMany({
     where: { userId },
   });

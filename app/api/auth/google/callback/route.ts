@@ -11,6 +11,11 @@ import {
   oauthStatesMatch,
 } from "@/lib/google";
 import { prisma } from "@/lib/prisma";
+import {
+  openSecretIfPresent,
+  sealSecret,
+  sealSecretIfNeeded,
+} from "@/lib/token-crypto";
 
 export const runtime = "nodejs";
 
@@ -99,21 +104,22 @@ export async function GET(request: NextRequest) {
       where: { userId: user.id },
       select: { refreshToken: true },
     });
-    const refreshToken = tokens.refreshToken ?? existing?.refreshToken ?? null;
+    const existingRefresh = openSecretIfPresent(existing?.refreshToken ?? null);
+    const refreshToken = tokens.refreshToken ?? existingRefresh ?? null;
 
     await prisma.googleConnection.upsert({
       where: { userId: user.id },
       create: {
         userId: user.id,
         googleAccountId,
-        accessToken: tokens.accessToken,
-        refreshToken,
+        accessToken: sealSecret(tokens.accessToken),
+        refreshToken: sealSecretIfNeeded(refreshToken),
         expiresAt: tokens.expiresAt,
       },
       update: {
         googleAccountId,
-        accessToken: tokens.accessToken,
-        refreshToken,
+        accessToken: sealSecret(tokens.accessToken),
+        refreshToken: sealSecretIfNeeded(refreshToken),
         expiresAt: tokens.expiresAt,
       },
     });

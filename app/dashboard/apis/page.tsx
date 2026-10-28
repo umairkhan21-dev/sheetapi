@@ -65,13 +65,13 @@ export default async function ApisPage({ searchParams }: ApisPageProps) {
       ) : null}
 
       {apis.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-300 px-4 py-6 text-sm text-zinc-600">
+        <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-sm text-slate-600">
           No APIs yet. Create one from a spreadsheet you have saved.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <div
-            className={`hidden gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-medium text-zinc-500 md:grid ${apiListColumnsClass}`}
+            className={`hidden gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-medium text-slate-500 md:grid ${apiListColumnsClass}`}
           >
             <span>Name</span>
             <span>Worksheet</span>
@@ -80,7 +80,7 @@ export default async function ApisPage({ searchParams }: ApisPageProps) {
             <span>Created</span>
             <span>Actions</span>
           </div>
-          <ul className="divide-y divide-zinc-200">
+          <ul className="divide-y divide-slate-200">
             {apis.map((api) => (
               <ApiListRow
                 key={api.id}

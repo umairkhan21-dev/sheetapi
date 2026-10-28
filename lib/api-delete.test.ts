@@ -9,6 +9,7 @@ import { hashApiKey } from "./api-key";
 import { authenticateApiKey, createOwnedApiKey } from "./api-key-store";
 import { withGoogleAccessToken } from "./google-access";
 import { readWorksheetRecords } from "./google-worksheets";
+import { withConnectedAccountLock } from "./connected-account-test-lock";
 import { prisma } from "./prisma";
 
 const stamp = Date.now();
@@ -252,7 +253,8 @@ describe("delete API", () => {
     }
   });
 
-  it("leaves the linked Google spreadsheet and other APIs in place", async (t) => {
+  it("leaves the linked Google spreadsheet and other APIs in place", (t) =>
+    withConnectedAccountLock(async () => {
     const connection = await prisma.googleConnection.findFirst({
       select: { userId: true },
     });
@@ -422,7 +424,8 @@ describe("delete API", () => {
 
       await prisma.api.deleteMany({ where: { id: temporary.id } });
     }
-  });
+    }),
+  );
 });
 
 after(async () => {

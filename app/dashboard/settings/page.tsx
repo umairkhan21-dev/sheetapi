@@ -39,19 +39,19 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         revoked={readParam(params.revoked)}
       />
 
-      <div className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+      <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
         <section className="px-4 py-4" aria-labelledby="account-settings-heading">
           <h2 id="account-settings-heading" className="text-sm font-semibold">
             Account
           </h2>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="grid gap-1 sm:grid-cols-3">
-              <dt className="text-zinc-500">Name</dt>
-              <dd className="text-zinc-900 sm:col-span-2">{user.name}</dd>
+              <dt className="text-slate-500">Name</dt>
+              <dd className="text-slate-900 sm:col-span-2">{user.name}</dd>
             </div>
             <div className="grid gap-1 sm:grid-cols-3">
-              <dt className="text-zinc-500">Email</dt>
-              <dd className="text-zinc-900 sm:col-span-2">{user.email}</dd>
+              <dt className="text-slate-500">Email</dt>
+              <dd className="text-slate-900 sm:col-span-2">{user.email}</dd>
             </div>
           </dl>
           <LogoutButton />
@@ -66,7 +66,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               {googleConnected ? "Connected" : "Not connected"}
             </StatusBadge>
           </div>
-          <p className="mt-3 text-sm leading-6 text-zinc-600">
+          <p className="mt-3 text-sm leading-6 text-slate-600">
             Spreadsheet selection and worksheet preview are on the Google
             Sheets page. SheetAPI only requests access to files you pick.
           </p>

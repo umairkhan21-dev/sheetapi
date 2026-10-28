@@ -353,14 +353,14 @@ export function CreateApiForm({
           <h2 id="create-api-heading" className="text-base font-semibold">
             Create API
           </h2>
-          <p className="mt-1 text-sm text-zinc-600">
+          <p className="mt-1 text-sm text-slate-600">
             Turn one saved worksheet into a read-only JSON endpoint.
           </p>
         </>
       )}
 
       {spreadsheets.status === "loading" ? (
-        <p role="status" className="mt-4 text-sm text-zinc-600">
+        <p role="status" className="mt-4 text-sm text-slate-600">
           Loading saved spreadsheets…
         </p>
       ) : null}
@@ -372,7 +372,7 @@ export function CreateApiForm({
       ) : null}
 
       {spreadsheets.status === "ready" && spreadsheets.spreadsheets.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-600">
+        <p className="mt-4 text-sm text-slate-600">
           Choose a spreadsheet before creating an API.
         </p>
       ) : null}
@@ -464,7 +464,7 @@ export function CreateApiForm({
               </p>
             ) : null}
             {worksheets.status === "ready" && worksheets.sheets.length === 0 ? (
-              <p className="mt-2 text-sm text-zinc-600">
+              <p className="mt-2 text-sm text-slate-600">
                 This spreadsheet has no worksheets.
               </p>
             ) : null}
@@ -506,7 +506,7 @@ export function CreateApiForm({
               spellCheck={false}
               className={`${fieldClass} mt-1.5`}
             />
-            <p className="mt-1.5 text-sm text-zinc-500">
+            <p className="mt-1.5 text-sm text-slate-500">
               Optional. Leave blank to create one from the name.
             </p>
           </div>

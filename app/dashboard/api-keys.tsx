@@ -31,7 +31,18 @@ type RevealedKey = {
   secret: string;
 };
 
-export function ApiKeys({ apiId }: { apiId: number }) {
+export type RevealedApiKey = {
+  secret: string;
+  keyPrefix: string;
+};
+
+export function ApiKeys({
+  apiId,
+  onRevealedChange,
+}: {
+  apiId: number;
+  onRevealedChange?: (key: RevealedApiKey | null) => void;
+}) {
   const [keys, setKeys] = useState<KeyListState>({ status: "loading" });
   const [reloadToken, setReloadToken] = useState(0);
   const [revealed, setRevealed] = useState<RevealedKey | null>(null);
@@ -89,10 +100,10 @@ export function ApiKeys({ apiId }: { apiId: number }) {
 
   return (
     <section aria-labelledby="api-keys-heading">
-      <h2 id="api-keys-heading" className="text-base font-semibold text-zinc-900">
+      <h2 id="api-keys-heading" className="text-base font-semibold text-slate-900">
         API keys
       </h2>
-      <p className="mt-1 text-sm leading-6 text-zinc-600">
+      <p className="mt-1 text-sm leading-6 text-slate-600">
         Create a key for this API, then send it as{" "}
         <span className="font-medium">Authorization: Bearer</span>. The full key
         is shown only once.
@@ -108,6 +119,7 @@ export function ApiKeys({ apiId }: { apiId: number }) {
         onCreated={(key, secret) => {
           loadRequest.current += 1;
           setRevealed({ keyId: key.id, secret });
+          onRevealedChange?.({ secret, keyPrefix: key.keyPrefix });
           setKeys((current) =>
             current.status === "ready"
               ? { status: "ready", keys: [key, ...current.keys] }
@@ -117,6 +129,7 @@ export function ApiKeys({ apiId }: { apiId: number }) {
         onRevoked={(key) => {
           if (revealed?.keyId === key.id) {
             setRevealed(null);
+            onRevealedChange?.(null);
           }
 
           setKeys((current) =>
@@ -337,7 +350,7 @@ function ApiKeyPanel({
       </form>
 
       {listStatus === "loading" ? (
-        <p role="status" className="mt-4 text-sm text-zinc-600">
+        <p role="status" className="mt-4 text-sm text-slate-600">
           Loading keys…
         </p>
       ) : null}
@@ -354,24 +367,24 @@ function ApiKeyPanel({
       ) : null}
 
       {listStatus === "ready" && keys.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-600">No API keys yet.</p>
+        <p className="mt-4 text-sm text-slate-600">No API keys yet.</p>
       ) : null}
 
       {listStatus === "ready" && keys.length > 0 ? (
-        <ul className="mt-4 divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <ul className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
           {keys.map((key) => (
             <li key={key.id} className="px-4 py-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium text-zinc-900">{key.name}</p>
+                <p className="font-medium text-slate-900">{key.name}</p>
                 <StatusBadge tone={key.revokedAt ? "neutral" : "success"}>
                   {key.revokedAt ? "Revoked" : "Active"}
                 </StatusBadge>
               </div>
-              <p className="mt-1 font-mono text-zinc-700">{key.keyPrefix}</p>
-              <p className="mt-1 text-zinc-600">
+              <p className="mt-1 font-mono text-slate-700">{key.keyPrefix}</p>
+              <p className="mt-1 text-slate-600">
                 Created {formatWhen(key.createdAt)}
               </p>
-              <p className="mt-1 text-zinc-600">
+              <p className="mt-1 text-slate-600">
                 {key.lastUsedAt
                   ? `Last used ${formatWhen(key.lastUsedAt)}`
                   : "Not used yet"}

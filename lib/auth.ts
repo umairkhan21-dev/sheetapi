@@ -1,8 +1,11 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { getJwtSecret } from "@/lib/jwt-secret";
 import { prisma } from "@/lib/prisma";
+import { cookiesMustUseSecureFlag } from "@/lib/secure-cookies";
 
 export const AUTH_COOKIE_NAME = "auth_token";
+export { resetJwtSecretCacheForTests } from "@/lib/jwt-secret";
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
@@ -16,16 +19,6 @@ type AuthTokenPayload = {
   userId: number;
   issuedAt: number;
 };
-
-function getJwtSecret() {
-  const secret = process.env.JWT_SECRET;
-
-  if (!secret) {
-    throw new Error("JWT_SECRET is not set");
-  }
-
-  return secret;
-}
 
 function encodeBase64Url(value: string) {
   return Buffer.from(value).toString("base64url");
@@ -43,7 +36,7 @@ function authCookieOptions(maxAge = SESSION_MAX_AGE_SECONDS) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesMustUseSecureFlag(),
     path: "/",
     maxAge,
   };

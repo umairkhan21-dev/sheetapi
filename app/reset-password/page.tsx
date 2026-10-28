@@ -88,14 +88,14 @@ function ResetPasswordForm() {
   }
 
   return (
-    <main className="min-h-screen bg-white text-zinc-900">
+    <main className="min-h-screen bg-white text-slate-900">
       <div className="mx-auto flex max-w-md flex-col px-6 py-16">
         <Link href="/" className="text-xl font-bold">
-          Sheet<span className="text-blue-600">API</span>
+          Sheet<span className="text-green-600">API</span>
         </Link>
 
-        <h1 className="mt-8 text-2xl font-bold">Reset password</h1>
-        <p className="mt-2 text-sm text-zinc-600">
+        <h1 className="mt-8 font-display text-4xl font-medium tracking-tight">Reset password</h1>
+        <p className="mt-2 text-sm text-slate-600">
           Choose a new password. The reset link expires after 1 hour and can
           only be used once.
         </p>
@@ -110,11 +110,11 @@ function ResetPasswordForm() {
                 required
                 autoComplete="new-password"
                 aria-describedby="password-requirements"
-                className="rounded-lg border border-zinc-200 px-3 py-2 font-normal outline-none focus:border-blue-600"
+                className="rounded-lg border border-slate-200 px-3 py-2 font-normal outline-none focus:border-green-600"
               />
             </label>
 
-            <p id="password-requirements" className="text-sm text-zinc-600">
+            <p id="password-requirements" className="text-sm text-slate-600">
               {PASSWORD_REQUIREMENT_MESSAGE}
             </p>
 
@@ -125,7 +125,7 @@ function ResetPasswordForm() {
                 type="password"
                 required
                 autoComplete="new-password"
-                className="rounded-lg border border-zinc-200 px-3 py-2 font-normal outline-none focus:border-blue-600"
+                className="rounded-lg border border-slate-200 px-3 py-2 font-normal outline-none focus:border-green-600"
               />
             </label>
 
@@ -139,7 +139,7 @@ function ResetPasswordForm() {
               type="submit"
               disabled={pending}
               aria-busy={pending}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              className="rounded-full bg-gradient-to-r from-green-500 to-green-600 px-6 py-3 text-sm font-semibold text-white shadow-[0_10px_15px_-3px_rgb(22_163_74/0.25),0_4px_6px_-4px_rgb(22_163_74/0.25)] hover:from-green-600 hover:to-green-700 disabled:opacity-60"
             >
               {pending ? "Saving password…" : "Reset password"}
             </button>
@@ -152,11 +152,11 @@ function ResetPasswordForm() {
 
         <Link
           href="/forgot-password"
-          className="mt-6 text-sm text-zinc-600 hover:text-zinc-900"
+          className="mt-6 text-sm text-slate-600 hover:text-slate-900"
         >
           Request a new reset link
         </Link>
-        <Link href="/login" className="mt-3 text-sm text-zinc-600 hover:text-zinc-900">
+        <Link href="/login" className="mt-3 text-sm text-slate-600 hover:text-slate-900">
           Back to login
         </Link>
       </div>
@@ -168,9 +168,9 @@ export default function ResetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-white text-zinc-900">
+        <main className="min-h-screen bg-white text-slate-900">
           <div className="mx-auto flex max-w-md flex-col px-6 py-16">
-            <p className="text-sm text-zinc-600">Loading reset form…</p>
+            <p className="text-sm text-slate-600">Loading reset form…</p>
           </div>
         </main>
       }

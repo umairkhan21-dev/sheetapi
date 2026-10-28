@@ -43,8 +43,8 @@ function DashboardNavLinks({
             onClick={onNavigate}
             className={`rounded-lg px-3 py-2 text-sm ${
               active
-                ? "bg-blue-50 font-medium text-blue-800"
-                : "text-zinc-700 hover:bg-zinc-50"
+                ? "bg-green-50 font-medium text-green-800"
+                : "text-slate-700 hover:bg-slate-50"
             }`}
           >
             {item.label}
@@ -66,11 +66,11 @@ export function DashboardShell({
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen flex-1 bg-zinc-50 text-zinc-900">
-      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-zinc-200 bg-white md:flex">
+    <div className="flex min-h-screen flex-1 bg-slate-50 text-slate-900">
+      <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
         <div className="px-4 py-5">
           <Link href="/dashboard" className="text-base font-semibold tracking-tight">
-            Sheet<span className="text-blue-600">API</span>
+            Sheet<span className="text-green-600">API</span>
           </Link>
         </div>
         <div className="px-3">
@@ -79,7 +79,7 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white">
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3 px-4 py-3">
             <button
               type="button"
@@ -96,14 +96,14 @@ export function DashboardShell({
               href="/dashboard"
               className="text-sm font-semibold tracking-tight md:hidden"
             >
-              Sheet<span className="text-blue-600">API</span>
+              Sheet<span className="text-green-600">API</span>
             </Link>
             <div className="ml-auto flex min-w-0 items-center gap-3">
               <div className="min-w-0 text-right leading-tight">
-                <p className="truncate text-sm font-medium text-zinc-900">
+                <p className="truncate text-sm font-medium text-slate-900">
                   {user.name}
                 </p>
-                <p className="truncate text-xs text-zinc-500">{user.email}</p>
+                <p className="truncate text-xs text-slate-500">{user.email}</p>
               </div>
               <LogoutButton compact />
             </div>
@@ -112,7 +112,7 @@ export function DashboardShell({
             id="dashboard-mobile-nav"
             className={
               menuOpen
-                ? "border-t border-zinc-200 px-3 py-3 md:hidden"
+                ? "border-t border-slate-200 px-3 py-3 md:hidden"
                 : "hidden"
             }
           >

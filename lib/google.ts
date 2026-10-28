@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { cookiesMustUseSecureFlag } from "@/lib/secure-cookies";
 
 export const GOOGLE_OAUTH_STATE_COOKIE = "google_oauth_state";
 export const GOOGLE_DRIVE_FILE_SCOPE =
@@ -103,7 +104,7 @@ export function googleOAuthStateCookieOptions(
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookiesMustUseSecureFlag(),
     path: "/api/auth/google",
     maxAge,
   };

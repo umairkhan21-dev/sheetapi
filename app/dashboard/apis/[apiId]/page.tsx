@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ApiKeys } from "@/app/dashboard/api-keys";
+import { ApiDetailTools } from "@/app/dashboard/api-playground";
 import { CopyButton } from "@/app/dashboard/copy-button";
 import { ApiDetailSettings } from "@/app/dashboard/manage-api";
 import { SpreadsheetPreview } from "@/app/dashboard/spreadsheet-preview";
@@ -10,6 +10,7 @@ import { formatTimestamp } from "@/app/dashboard/ui";
 import { buildPublicApiUrl } from "@/lib/api-config";
 import { getAppUrl } from "@/lib/email";
 import { prisma } from "@/lib/prisma";
+import { syncSelectedSpreadsheetNames } from "@/lib/selected-spreadsheet-sync";
 
 export const metadata = {
   title: "API details",
@@ -62,20 +63,14 @@ export default async function ApiDetailsPage({ params }: ApiDetailsPageProps) {
     notFound();
   }
 
-  const [spreadsheet, googleConnected] = await Promise.all([
-    prisma.selectedSpreadsheet.findUnique({
-      where: {
-        userId_spreadsheetId: {
-          userId: user.id,
-          spreadsheetId: api.spreadsheetId,
-        },
-      },
-      select: {
-        name: true,
-      },
-    }),
+  const [savedSpreadsheets, googleConnected] = await Promise.all([
+    syncSelectedSpreadsheetNames(user.id),
     hasGoogleConnection(user.id),
   ]);
+  const spreadsheet =
+    savedSpreadsheets.find(
+      (saved) => saved.spreadsheetId === api.spreadsheetId,
+    ) ?? null;
   const url = buildPublicApiUrl(getAppUrl(), api.slug);
   const created =
     formatTimestamp(api.createdAt.toISOString()) ?? api.createdAt.toISOString();
@@ -92,14 +87,14 @@ export default async function ApiDetailsPage({ params }: ApiDetailsPageProps) {
         googleConnected={googleConnected}
       />
 
-      <dl className="divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+      <dl className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
         <DetailRow label="Endpoint">
           <div className="flex flex-col items-start gap-2">
             <a
               href={url}
               target="_blank"
               rel="noreferrer"
-              className="break-all font-mono text-sm text-blue-700 hover:underline"
+              className="break-all font-mono text-sm text-green-700 hover:underline"
             >
               {url}
             </a>
@@ -115,7 +110,7 @@ export default async function ApiDetailsPage({ params }: ApiDetailsPageProps) {
               spreadsheet was not deleted.{" "}
               <Link
                 href="/dashboard/sheets"
-                className="font-medium text-blue-700 hover:underline"
+                className="font-medium text-green-700 hover:underline"
               >
                 Open Google Sheets
               </Link>
@@ -126,17 +121,17 @@ export default async function ApiDetailsPage({ params }: ApiDetailsPageProps) {
         <DetailRow label="Created">{created}</DetailRow>
       </dl>
 
-      <ApiKeys apiId={api.id} />
+      <ApiDetailTools apiId={api.id} endpoint={url} />
 
       <section aria-labelledby="api-preview-heading" className="space-y-3">
         <div>
           <h2
             id="api-preview-heading"
-            className="text-base font-semibold text-zinc-900"
+            className="text-base font-semibold text-slate-900"
           >
             Preview
           </h2>
-          <p className="mt-1 text-sm text-zinc-600">
+          <p className="mt-1 text-sm text-slate-600">
             The linked worksheet as a table and JSON. Large sheets show the
             first 100 rows and 50 columns.
           </p>
@@ -149,7 +144,7 @@ export default async function ApiDetailsPage({ params }: ApiDetailsPageProps) {
             hideHeading
           />
         ) : (
-          <p className="text-sm text-zinc-600">
+          <p className="text-sm text-slate-600">
             {spreadsheet
               ? "Reconnect Google Sheets before this worksheet can be previewed. No spreadsheet data is shown."
               : "Save the spreadsheet again to load a preview. No spreadsheet data is shown."}
@@ -169,8 +164,8 @@ function DetailRow({
 }) {
   return (
     <div className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-3 sm:gap-4">
-      <dt className="font-medium text-zinc-500">{label}</dt>
-      <dd className="text-zinc-900 sm:col-span-2">{children}</dd>
+      <dt className="font-medium text-slate-500">{label}</dt>
+      <dd className="text-slate-900 sm:col-span-2">{children}</dd>
     </div>
   );
 }

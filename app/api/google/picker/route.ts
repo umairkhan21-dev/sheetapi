@@ -3,12 +3,16 @@ import {
   GoogleOAuthConfigError,
   GoogleTokenRefreshError,
 } from "@/lib/google";
-import { createGoogleAccessTokenResolver } from "@/lib/google-access";
+import {
+  createGoogleAccessTokenResolver,
+  needsLegacyReseal,
+} from "@/lib/google-access";
 import {
   getGooglePickerConfig,
   GooglePickerConfigError,
 } from "@/lib/google-picker";
 import { prisma } from "@/lib/prisma";
+import { openSecret, openSecretIfPresent } from "@/lib/token-crypto";
 
 export const runtime = "nodejs";
 
@@ -67,9 +71,13 @@ export async function GET() {
 
     const accessToken = await createGoogleAccessTokenResolver({
       userId: user.id,
-      accessToken: connection.accessToken,
-      refreshToken: connection.refreshToken,
+      accessToken: openSecret(connection.accessToken),
+      refreshToken: openSecretIfPresent(connection.refreshToken),
       expiresAt: connection.expiresAt,
+      resealLegacy: needsLegacyReseal(
+        connection.accessToken,
+        connection.refreshToken,
+      ),
     }).resolve();
 
     return Response.json(

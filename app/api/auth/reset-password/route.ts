@@ -7,6 +7,12 @@ import {
 } from "@/lib/password";
 import { hashResetToken } from "@/lib/password-reset";
 import { prisma } from "@/lib/prisma";
+import {
+  AUTH_RATE_LIMITS,
+  authRateLimitResponse,
+  clientIpFromRequest,
+  consumeRateLimit,
+} from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -32,6 +38,16 @@ async function readJsonObject(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const limited = await consumeRateLimit({
+      key: `auth:reset:${clientIpFromRequest(request)}`,
+      limit: AUTH_RATE_LIMITS.resetPassword.limit,
+      windowSeconds: AUTH_RATE_LIMITS.resetPassword.windowSeconds,
+    });
+
+    if (!limited.ok) {
+      return authRateLimitResponse(limited);
+    }
+
     const body = await readJsonObject(request);
 
     if (!body) {

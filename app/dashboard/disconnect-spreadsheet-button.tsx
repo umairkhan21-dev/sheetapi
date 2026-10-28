@@ -102,7 +102,7 @@ export function DisconnectSpreadsheetButton({
       <dialog
         ref={dialogRef}
         aria-labelledby={titleId}
-        className="m-auto w-[min(100%,28rem)] rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-900/40"
+        className="m-auto w-[min(100%,28rem)] rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-lg backdrop:bg-slate-900/40"
         onCancel={(event) => {
           if (pending) {
             event.preventDefault();
@@ -118,7 +118,7 @@ export function DisconnectSpreadsheetButton({
           <h2 id={titleId} className="text-base font-semibold">
             Disconnect {spreadsheetName}?
           </h2>
-          <p className="text-sm leading-6 text-zinc-600">
+          <p className="text-sm leading-6 text-slate-600">
             SheetAPI will remove this spreadsheet selection. It will not delete
             or change the Google spreadsheet, its worksheets, or its rows. API
             configurations that use this spreadsheet stay saved, but they will

@@ -29,6 +29,9 @@ function readSmtpConfig(): SmtpConfig | null {
   if (
     !host ||
     !from ||
+    /[\r\n]/.test(host) ||
+    /[\r\n]/.test(from) ||
+    !from.includes("@") ||
     !Number.isInteger(port) ||
     port <= 0 ||
     port > 65535 ||
@@ -47,8 +50,7 @@ function readSmtpConfig(): SmtpConfig | null {
   };
 }
 
-export function assertPasswordResetDeliveryReady() {
-  getAppUrl();
+export function assertEmailTransportConfigured() {
   const smtp = readSmtpConfig();
 
   if (!smtp && process.env.NODE_ENV === "production") {
@@ -56,10 +58,23 @@ export function assertPasswordResetDeliveryReady() {
   }
 }
 
+export function assertPasswordResetDeliveryReady() {
+  getAppUrl();
+  assertEmailTransportConfigured();
+}
+
 export function getAppUrl() {
   const configured = process.env.APP_URL?.trim().replace(/\/$/, "");
 
-  if (configured) {
+  if (!configured) {
+    if (process.env.NODE_ENV !== "production") {
+      return "http://localhost:3000";
+    }
+
+    throw new Error("APP_URL is not configured");
+  }
+
+  if (process.env.NODE_ENV !== "production") {
     if (!/^https?:\/\//.test(configured)) {
       throw new Error("APP_URL is not configured");
     }
@@ -67,11 +82,30 @@ export function getAppUrl() {
     return configured;
   }
 
-  if (process.env.NODE_ENV !== "production") {
-    return "http://localhost:3000";
+  let url: URL;
+
+  try {
+    url = new URL(configured);
+  } catch {
+    throw new Error("APP_URL is invalid");
   }
 
-  throw new Error("APP_URL is not configured");
+  if (url.protocol !== "https:") {
+    throw new Error("APP_URL must use https in production");
+  }
+
+  if (
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    url.pathname !== "/" ||
+    url.hostname === ""
+  ) {
+    throw new Error("APP_URL is invalid");
+  }
+
+  return url.origin;
 }
 
 export function buildPasswordResetUrl(appUrl: string, token: string) {

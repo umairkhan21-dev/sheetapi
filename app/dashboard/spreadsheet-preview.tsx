@@ -211,7 +211,7 @@ export function SpreadsheetPreview({
   return (
     <section
       id="worksheet-preview"
-      className={`${hideHeading ? "" : "mt-6"} rounded-lg border border-zinc-200 bg-white p-4`}
+      className={`${hideHeading ? "" : "mt-6"} rounded-lg border border-slate-200 bg-white p-4`}
       aria-labelledby={hideHeading ? undefined : "worksheet-preview-heading"}
       aria-label={hideHeading ? `${displayName} preview` : undefined}
     >
@@ -222,7 +222,7 @@ export function SpreadsheetPreview({
       )}
 
       {worksheets.status === "loading" ? (
-        <p role="status" className="mt-3 text-sm text-zinc-600">
+        <p role="status" className="mt-3 text-sm text-slate-600">
           Loading worksheets…
         </p>
       ) : null}
@@ -234,7 +234,7 @@ export function SpreadsheetPreview({
       ) : null}
 
       {worksheets.status === "ready" && worksheets.sheets.length === 0 ? (
-        <p className="mt-3 text-sm text-zinc-600">
+        <p className="mt-3 text-sm text-slate-600">
           This spreadsheet has no worksheets.
         </p>
       ) : null}
@@ -255,8 +255,8 @@ export function SpreadsheetPreview({
                 }}
                 className={`rounded-lg border px-3 py-1.5 text-sm ${
                   selected
-                    ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-zinc-300 bg-white hover:bg-zinc-50"
+                    ? "border-green-600 bg-green-600 text-white"
+                    : "border-slate-300 bg-white hover:bg-slate-50"
                 }`}
               >
                 {sheet.title}
@@ -267,13 +267,13 @@ export function SpreadsheetPreview({
       ) : null}
 
       {worksheets.status === "ready" && sheetId != null && worksheets.sheets[0] ? (
-        <p className="mt-3 text-sm text-zinc-600">
+        <p className="mt-3 text-sm text-slate-600">
           Worksheet: {worksheets.sheets[0].title}
         </p>
       ) : null}
 
       {preview.status === "loading" ? (
-        <p role="status" className="mt-4 text-sm text-zinc-600">
+        <p role="status" className="mt-4 text-sm text-slate-600">
           Loading preview…
         </p>
       ) : null}
@@ -285,18 +285,18 @@ export function SpreadsheetPreview({
       ) : null}
 
       {preview.status === "ready" && preview.preview.columns.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-600">This worksheet is empty.</p>
+        <p className="mt-4 text-sm text-slate-600">This worksheet is empty.</p>
       ) : null}
 
       {preview.status === "ready" && preview.preview.columns.length > 0 ? (
         <div className="mt-4">
           {preview.preview.rows.length === 0 ? (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-slate-600">
               This worksheet has headers and no data rows.
             </p>
           ) : null}
           {preview.preview.truncated ? (
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-slate-600">
               Preview shows the first 100 rows and 50 columns.
             </p>
           ) : null}
@@ -308,7 +308,7 @@ export function SpreadsheetPreview({
                     <th
                       key={column}
                       scope="col"
-                      className="border-b border-zinc-200 px-3 py-2 font-medium"
+                      className="border-b border-slate-200 px-3 py-2 font-medium"
                     >
                       {column}
                     </th>
@@ -321,7 +321,7 @@ export function SpreadsheetPreview({
                     {preview.preview.columns.map((column) => (
                       <td
                         key={column}
-                        className="border-b border-zinc-100 px-3 py-2 align-top"
+                        className="border-b border-slate-100 px-3 py-2 align-top"
                       >
                         {row[column] ?? ""}
                       </td>
@@ -331,7 +331,7 @@ export function SpreadsheetPreview({
               </tbody>
             </table>
           </div>
-          <pre className="mt-4 overflow-x-auto rounded-lg bg-zinc-50 p-3 text-xs text-zinc-800">
+          <pre className="mt-4 overflow-x-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-800">
             {JSON.stringify(preview.preview.rows, null, 2)}
           </pre>
         </div>

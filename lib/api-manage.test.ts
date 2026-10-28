@@ -11,6 +11,7 @@ import {
   readSpreadsheetWorksheets,
   readWorksheetRecords,
 } from "./google-worksheets";
+import { withConnectedAccountLock } from "./connected-account-test-lock";
 import { prisma } from "./prisma";
 
 const stamp = Date.now();
@@ -384,7 +385,8 @@ describe("API rename and enable/disable", () => {
     }
   });
 
-  it("stops and restores spreadsheet reads without changing the sheet", async (t) => {
+  it("stops and restores spreadsheet reads without changing the sheet", (t) =>
+    withConnectedAccountLock(async () => {
     const connection = await prisma.googleConnection.findFirst({
       select: { userId: true },
     });
@@ -582,7 +584,8 @@ describe("API rename and enable/disable", () => {
 
       await prisma.api.deleteMany({ where: { id: temporary.id } });
     }
-  });
+    }),
+  );
 });
 
 after(async () => {

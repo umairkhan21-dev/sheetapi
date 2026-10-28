@@ -94,3 +94,10 @@ model ApiKey {
 
   @@index([apiId])
 }
+
+model RateLimitBucket {
+  id        String   @id @db.VarChar(128)
+  count     Int
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+}

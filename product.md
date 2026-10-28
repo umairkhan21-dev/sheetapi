@@ -68,7 +68,6 @@ The MVP must allow a user to:
 
 Later versions can add:
 
--   POST/PUT/PATCH/DELETE
 -   Advanced filters
 -   Sorting
 -   Field selection
@@ -88,6 +87,9 @@ Later versions can add:
 -   SDK generation
 -   Scheduled sync
 -   More spreadsheet providers
+
+Public write methods (POST, PUT, PATCH, DELETE) are implemented on
+`/api/v1/{slug}`. See Public write methods in Current Project State.
 
 ------------------------------------------------------------------------
 
@@ -270,6 +272,17 @@ Completed:
 -   Single-use, expiring reset tokens
 -   Older unused reset tokens invalidated by a new request
 -   Sessions issued before a password change are rejected
+-   Auth and public API routes are rate-limited via a shared MariaDB
+    `RateLimitBucket` store (HTTP 429 + `Retry-After`)
+-   Production requires a high-entropy `JWT_SECRET` (fail closed)
+-   Auth and Google OAuth state cookies use `Secure` in production
+    (`ALLOW_INSECURE_COOKIES` cannot disable this in production)
+
+Residual session risk: logout clears the HTTP-only cookie only. A stolen
+JWT remains valid until `exp` (7 days) or until `passwordChangedAt`
+invalidates older `iat` values (password reset). A durable server-side
+session version / denylist was not added; prefer short session TTL and
+HTTPS-only cookies, and rotate `JWT_SECRET` only with a planned outage.
 
 Existing routes:
 
@@ -446,6 +459,17 @@ stored Google connection, checks that it is a spreadsheet this app can
 access, and then saves the ID, name, and modified time on
 `SelectedSpreadsheet`. Spreadsheet rows are not stored.
 
+`GET /api/google/sheets/selection` refreshes those saved names from
+Google Drive before responding. Drive files are matched by id, which
+does not change when a spreadsheet is renamed. The Create API dropdown
+and the saved spreadsheet list both read this response, so the next
+load shows the current Drive name. The API detail page uses the same
+refresh for its spreadsheet label. If Drive cannot be read, the stored
+name stays and the selection is not removed. Reconnecting Google
+updates the stored tokens. It does not by itself rename a saved row.
+The available-spreadsheet list is a separate live Drive read at
+`GET /api/google/sheets`.
+
 Manual Google Cloud setup:
 
 -   Enable the Google Picker API
@@ -512,8 +536,9 @@ API's page.
 GET /api/v1/products
 ```
 
-returns the worksheet as a JSON array of string-valued objects. The
-read uses the configuration owner's stored Google connection and the
+returns the worksheet as a JSON array of string-valued objects.
+`limit` and `offset` page those data rows. The read uses the
+configuration owner's stored Google connection and the
 spreadsheet id stored on the configuration. Callers cannot substitute
 another spreadsheet id. A missing configuration returns 404. A
 `DISABLED` configuration returns 403 and no rows. If the saved
@@ -1204,6 +1229,404 @@ Limitations:
 -   The public legal page that explains how to disconnect Google is
     still later work.
 
+### Public read pagination
+
+Implemented. `GET /api/v1/{slug}` accepts `limit` and `offset`.
+`limit` is the maximum number of data rows to return. `offset` is the
+number of data rows to skip. The header row is not a data row. The
+response remains a JSON array of string-valued objects. A wrapper with
+`data` and `pagination` was not added, so existing callers keep
+reading the array.
+
+``` text
+GET /api/v1/products?limit=3&offset=0
+GET /api/v1/products?limit=3&offset=3
+GET /api/v1/products?offset=2
+GET /api/v1/products?limit=3
+```
+
+When `limit` is omitted, the limit is 10,000. That is the same data-row
+ceiling the public read already enforces, so a request with no
+pagination parameters still returns every allowed data row. The maximum
+accepted `limit` is also 10,000. When `offset` is omitted, the offset
+is 0. `offset` may be any safe non-negative integer up to
+9007199254740991. An offset past the last data row returns `[]`.
+
+Invalid `limit` or `offset` values return 400 `INVALID_INPUT` and do
+not read Google Sheets. Rejected values include zero and negative
+limits, negative offsets, decimals, empty strings, non-numeric text,
+repeated parameters, values above the limit maximum, and integers
+JavaScript cannot represent safely. A missing, invalid, or revoked key
+still returns 401. A disabled API still returns 403. Those checks
+happen before pagination is validated. API keys are still read only
+from the `Authorization` header.
+
+The Google Sheets read is unchanged: one bounded range covering the
+header and up to 10,000 data rows, plus the extra row and column used
+to detect an oversized worksheet. Rows are sliced after the existing
+header-to-object conversion. A page-sized range is not requested.
+Google Sheets omits empty rows that are trailing inside the requested
+range, so a shorter range would drop blank data rows that the unpaged
+array includes and `offset` would no longer match that array. A
+worksheet above 10,000 data rows or 200 columns still returns 413
+`WORKSHEET_TOO_LARGE` and no partial page.
+
+No schema change was required. Spreadsheet rows are not stored.
+
+Checks run for this milestone:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   `npx tsx --test lib/public-api-pagination.test.ts lib/public-api.route.test.ts`
+    passed: 12 tests. Those tests mock Google and do not edit a spreadsheet
+-   `npx tsx --test lib/*.test.ts` passed 73 tests and failed 1. The failure
+    is the existing live Google sheet route test, which expects the connected
+    account's API ids to stay unchanged while other live tests run in
+    parallel. The same file passed on its own: 7 tests, 0 failed. The real
+    spreadsheet was not edited
+
+### Public read filtering
+
+Implemented. `GET /api/v1/{slug}` accepts exact column comparisons,
+column operators, and a reserved `q` search. Several clauses match with
+AND. Matching rows keep their original order. Filtering runs on the
+mapped data rows before `limit` and `offset`. Exact `column=value`
+remains case-sensitive equality.
+
+``` text
+GET /api/v1/products?city=london
+GET /api/v1/products?city=london&name=hermoine
+GET /api/v1/products?city=london&limit=2&offset=1
+```
+
+The JSON keys are the same keys the unfiltered response already uses.
+A blank header becomes `Column 1`, `Column 2`, and so on. A repeated
+header becomes `name`, `name 2`, and so on. Spaces around a header cell
+are removed when that key is created. Filter names are not trimmed
+again, and cell values are not trimmed. `+` in a query value is a
+space because the URL parser decodes it. Exact values are compared as
+ordinary strings after decoding. An exact value is never evaluated as
+SQL, a regular expression, or a substring. An asterisk in an exact
+value stays literal.
+
+`limit`, `offset`, and `q` are reserved. They are not column filters,
+even when the worksheet has columns with those names. A column named
+`limit`, `offset`, or `q` cannot be filtered. Any other parameter is a
+filter or a column operator. Unknown parameters are not ignored.
+`spreadsheetId` in the query does not change which spreadsheet is read.
+
+`q` is a case-sensitive substring search across every mapped column. A
+row matches when any cell contains the value. `*` inside `q` is
+literal. `q` is AND-ed with every column clause. An empty or repeated
+`q` is invalid.
+
+Column operators use a suffix on the header-derived key. The suffix is
+recognized only when the full parameter name is not itself a header.
+A real header named `name__contains` remains an exact filter, and the
+contains operator for `name` is then unavailable under that parameter.
+
+``` text
+name__contains=pen
+name__starts=Pe
+name__ends=en
+name__icontains=PEN
+name__istarts=pe
+name__iends=EN
+name__wildcard=p%2An
+note__wildcard=%5C%2A
+note__wildcard=%5C%5C
+q=pen&city=london
+```
+
+`__contains`, `__starts`, and `__ends` are case-sensitive.
+`__icontains`, `__istarts`, and `__iends` use `String.toLowerCase`
+and do not follow the spreadsheet locale. `__wildcard` is
+case-sensitive. In the decoded wildcard value, `*` matches any
+sequence, including an empty sequence. `\*` is a literal asterisk and
+`\\` is a literal backslash. A backslash before any other character,
+including a trailing backslash, stays a backslash. The match uses
+literal segments, not a regular expression. In a URL, encode `\` as
+`%5C`. `%5C%2A` decodes to `\*` and matches a cell whose value is `*`.
+`%5C%5C` decodes to `\\` and matches a cell whose value is `\`.
+
+All clauses, including `q`, run on the mapped rows before `limit` and
+`offset`. A wildcard `*` can match a blank cell. An empty operator
+value is still invalid, so a blank cell cannot be selected by an exact
+filter or by an empty contains, starts, or ends value.
+
+A parameter may appear only once. An empty value, including a bare
+parameter with no equals sign, is rejected. An empty parameter name is
+rejected. A name longer than 50,000 characters is rejected. Those
+checks return 400 `INVALID_INPUT` before `lastUsedAt` is updated and
+before Google Sheets is read. A name that is not one of the
+header-derived keys also returns 400 `INVALID_INPUT`. That check
+happens after the worksheet read, because the keys come from the
+sheet, so `lastUsedAt` has already been recorded. The first rejected
+parameter in the query string supplies the message:
+
+``` text
+city was provided more than once.
+city must not be empty.
+A filter name is required.
+A filter name is too long.
+town is not a column in this worksheet.
+```
+
+`town__contains` uses that same message for the base name `town` when
+`town` is not a header. A parameter that is not a header and not a
+known operator, such as `name__nope`, uses its full name in the message.
+
+A filter that names a real column and matches no row returns `[]`.
+The same is true for a header-only worksheet. An empty worksheet has
+no columns, so any filter is an unknown column. A request with no
+filter parameters still returns the same array as before. Blank cells
+cannot be selected, because an empty filter value is invalid.
+
+Invalid `limit` or `offset` is still reported before filter errors.
+A missing or invalid API key is still 401. A disabled API is still
+403. Those checks happen before filter validation. An oversized
+worksheet is still 413, including when a filter is present. Google
+read errors are unchanged. Rows are not written to MySQL, and the
+Google Sheet is not modified.
+
+No schema change was required. Sorting and numeric or date comparisons
+are not part of this behavior. The playground still sends one exact
+`column/value` filter.
+
+Checks run for this milestone:
+
+-   `npx tsc --noEmit` passed
+-   `npm run lint` passed
+-   `npx tsx --test lib/public-api-filter.test.ts lib/public-api.route.test.ts`
+    passed: 16 tests. Those tests mock Google and do not edit a spreadsheet
+-   `npx tsx --test lib/*.test.ts` passed 89 tests and failed 1. The failure
+    is the existing live check in `lib/google-token.test.ts` that compares
+    the stored access-token hash before and after an `invalid_grant` call.
+    Another live test refreshed that connection while the suite ran in
+    parallel. It is not a Google 429. `npx tsx --test lib/google-token.test.ts`
+    then passed on its own: 9 tests, 0 failed. The real spreadsheet was
+    not edited
+
+### API Playground
+
+Implemented on the API details page, below the API keys and above the
+worksheet preview, in a compact SheetBest-style layout: method
+dropdown, read-only endpoint field, and green Run button on one row;
+one optional **Row ID or Filter** field underneath; a documentation
+anchor; then status, elapsed time, and formatted JSON after a request.
+
+The method dropdown lists GET, POST, PUT, PATCH, and DELETE. All five
+are implemented on `/api/v1/{slug}` and can be sent from the
+playground. GET is selected by default.
+
+Selector syntax:
+
+-   Empty: GET returns all allowed rows (server default pagination).
+    POST appends without a selector.
+-   `column/value` (for example `city/london`): GET exact filter on
+    that header-derived column. Encoded with `URLSearchParams`.
+-   `row/N`: PUT, PATCH, and DELETE target Google Sheets row `N`
+    (`rowNumber`). Data rows start at 2. Row 1 is rejected.
+-   Ambiguous or method-mismatched input is rejected in the browser
+    with a clear message. The UI does not treat a bare value as an
+    `id` column lookup.
+
+POST, PUT, and PATCH still show a JSON body editor. DELETE still
+requires confirmation. Limit and offset controls are not shown; the
+public API defaults apply unless the caller uses another client.
+
+The playground can send a key only after Create key shows the raw key
+on this page. That value stays in memory until the user leaves, reloads,
+or revokes that key. It is not written to `localStorage` or
+`sessionStorage`, and it is not put in the query string. Requests use
+`Authorization: Bearer`. Write requests also send
+`Content-Type: application/json` when a body is present. Run stays
+disabled until a key from this page is available and client-side
+validation passes. Another user's API id still returns the dashboard
+not-found page.
+
+The response shows the HTTP status, the elapsed time, the JSON body,
+and the API error message when the request fails. Clear Response
+removes it.
+
+### Public write methods
+
+Implemented on the same public endpoint as GET:
+
+``` text
+POST   /api/v1/{slug}
+PUT    /api/v1/{slug}?rowNumber={n}
+PATCH  /api/v1/{slug}?rowNumber={n}
+DELETE /api/v1/{slug}?rowNumber={n}
+```
+
+Every write requires `Authorization: Bearer <key>` for that API. The
+key must not be revoked. Disabled APIs return 403. Disconnected
+spreadsheet selections return 404. Missing Google connections return
+503. Spreadsheet id, worksheet id, and owner id in the body are never
+accepted as overrides; unknown keys that are not worksheet columns
+return 400. Rows are written only through the Google Sheets API. They
+are not stored in MySQL.
+
+#### Row selector
+
+`rowNumber` is the Google Sheets worksheet row number:
+
+-   Row 1 is the header row and cannot be updated or deleted
+-   Data rows start at 2
+-   `rowNumber` is required for PUT, PATCH, and DELETE
+-   Missing, repeated, non-integer, header-row, and out-of-range values
+    return 400 `INVALID_INPUT`
+
+After DELETE, later worksheet rows move up. Callers must not assume a
+stable `rowNumber` across concurrent writes. Google Sheets does not
+provide transactional row locks for these operations.
+
+#### POST
+
+``` http
+POST /api/v1/products
+Authorization: Bearer sk_live_example
+Content-Type: application/json
+```
+
+``` json
+{
+  "id": "7",
+  "name": "luna",
+  "city": "paris"
+}
+```
+
+Appends one data row. Keys must match header-derived JSON keys. Values
+must be strings, finite numbers, or booleans. Numbers become their
+decimal text. Booleans become `TRUE` or `FALSE`. Omitted columns are
+written as blank cells so values never shift into the wrong column.
+Arrays, null bodies, empty objects, malformed JSON, wrong content
+types, and unknown columns return 400. A worksheet with no header row
+returns 400. Successful responses use 201:
+
+``` json
+{
+  "success": true,
+  "row": {
+    "id": "7",
+    "name": "luna",
+    "city": "paris"
+  },
+  "rowNumber": 3
+}
+```
+
+`rowNumber` is the worksheet row after the existing data rows at the
+time of the append. Concurrent appends can race; the API does not
+retry non-idempotent appends.
+
+#### PUT
+
+``` http
+PUT /api/v1/products?rowNumber=3
+Authorization: Bearer sk_live_example
+Content-Type: application/json
+```
+
+``` json
+{
+  "id": "2",
+  "city": "rome"
+}
+```
+
+Replaces every cell in that data row for the current headers. Omitted
+columns become blank cells. Unrelated rows are unchanged. Success:
+
+``` json
+{
+  "success": true,
+  "row": {
+    "id": "2",
+    "name": "",
+    "city": "rome"
+  },
+  "rowNumber": 3
+}
+```
+
+#### PATCH
+
+``` http
+PATCH /api/v1/products?rowNumber=2
+Authorization: Bearer sk_live_example
+Content-Type: application/json
+```
+
+``` json
+{
+  "city": "paris"
+}
+```
+
+Updates only the supplied fields. Every other cell in that row is
+preserved. The body must be a non-empty object. Success returns the
+full resulting row:
+
+``` json
+{
+  "success": true,
+  "row": {
+    "id": "1",
+    "name": "ada",
+    "city": "paris"
+  },
+  "rowNumber": 2
+}
+```
+
+#### DELETE
+
+``` http
+DELETE /api/v1/products?rowNumber=3
+Authorization: Bearer sk_live_example
+```
+
+Deletes one data row with Google Sheets `deleteDimension`. The
+zero-based index sent to Google is `rowNumber - 1` with an exclusive
+end index of `rowNumber`. The header row is never deleted. The whole
+spreadsheet or worksheet is never deleted. Success:
+
+``` json
+{
+  "success": true,
+  "deleted": true,
+  "rowNumber": 3
+}
+```
+
+#### Auth, usage, and Google errors
+
+Validation order matches GET wherever possible: slug, bearer key, API
+status, saved spreadsheet selection, then method-specific input, then
+`lastUsedAt`, then Google. Failed authentication does not update
+`lastUsedAt`. Content-type and JSON parse errors for write bodies are
+checked before `lastUsedAt`. Unknown columns and out-of-range row
+numbers are checked after the worksheet is read, so `lastUsedAt` may
+already be set, matching the GET unknown-filter behavior.
+
+Google permission, reauthorization, quota, invalid-range, and network
+failures use the existing public error mapping and never expose OAuth
+tokens, refresh tokens, or API-key hashes. The OAuth scope remains
+`https://www.googleapis.com/auth/drive.file`. Writes require that the
+connected account still has edit access to the saved spreadsheet.
+
+Limitations:
+
+-   Row identity is positional (`rowNumber`), not a configured primary key
+-   Concurrent clients can race on the same row numbers
+-   Append is not retried, to avoid duplicate rows
+-   Google Sheets is not transactional across read-then-write steps
+-   Blank trailing rows omitted by Sheets can make `rowNumber` differ
+    from a visual empty-row count in the UI
+
 # 7. Current Immediate Work
 
 Application authentication, including password reset, is implemented:
@@ -1249,16 +1672,20 @@ GET  /api/v1/{slug}
 ```
 
 `GET /api/v1/{slug}` requires `Authorization: Bearer <key>`. The key
-must belong to that API and must not be revoked. Deleting an API
+must belong to that API and must not be revoked. The same bearer key
+authorizes POST, PUT, PATCH, and DELETE on that slug. Deleting an API
 removes that configuration and its keys. It does not delete the Google
 spreadsheet or worksheet. A disabled API returns 403 and no rows.
 Renaming changes the display name only. Do not broaden the OAuth scope.
 
 The dashboard navigation shell is implemented. Delete, rename, enable,
 and disable are implemented. Disconnecting a saved spreadsheet and
-disconnecting the Google account are implemented. The next product
-milestone is pagination for the public read. Do not add search,
-filtering, sorting, or worksheet writes before pagination.
+disconnecting the Google account are implemented. Pagination for the
+public read is implemented with `limit` and `offset`. Column filtering
+is implemented on that same public read. Public writes are implemented
+with `rowNumber` selection. The API details page playground can send
+GET, POST, PUT, PATCH, and DELETE. Column operators and `q` search are
+implemented. Sorting is not implemented.
 
 Because the OAuth scope is still `drive.file`, Google Picker is how a
 user grants access to an existing spreadsheet. Do not broaden the
@@ -1955,6 +2382,10 @@ Read worksheet
   ↓
 Convert rows to JSON
   ↓
+Apply column filters
+  ↓
+Apply limit and offset
+  ↓
 Return response
 ```
 
@@ -1964,65 +2395,70 @@ Return response
 
 ## Milestone 20. Pagination
 
-Support:
+Implemented on `GET /api/v1/{slug}`:
 
 ``` text
-?page=1
-&limit=20
+?limit=3
+&offset=0
 ```
 
-Response:
+`limit` defaults to 10,000 and cannot be greater than 10,000. `offset`
+defaults to 0. The response stays the existing JSON array. Only data
+rows are paged. The header row is not returned and is not counted in
+`offset`. An offset past the data returns an empty array. Invalid
+pagination parameters return 400 `INVALID_INPUT`.
 
-``` json
-{
-  "data": [],
-  "pagination": {
-    "page": 1,
-    "limit": 20,
-    "total": 100,
-    "totalPages": 5
-  }
-}
-```
+The original sketch used `page` and a `pagination` wrapper. That wrapper
+was not added, because the public endpoint already returns a bare array
+and this milestone keeps that response.
 
 ------------------------------------------------------------------------
 
 ## Milestone 21. Search
 
-Example:
+Implemented on `GET /api/v1/{slug}`:
 
 ``` text
 ?q=pen
 ```
 
-Search should operate across configured searchable fields.
+`q` is reserved, like `limit` and `offset`. It is a case-sensitive
+substring match against any mapped column and is AND-ed with the other
+filter clauses before pagination. Configured searchable fields do not
+exist yet, so every returned column is searched. A column named `q`
+cannot be exact-filtered.
 
 ------------------------------------------------------------------------
 
 ## Milestone 22. Filtering
 
-Example:
+Implemented on `GET /api/v1/{slug}` after the rows are mapped and
+before `limit` and `offset`:
 
 ``` text
 ?category=books
-```
-
-Or:
-
-``` text
 ?price=100
+?category=books&price=100
 ```
 
-Advanced operators can later include:
+The parameter name must exactly match a header-derived JSON key. The
+value must exactly match that cell. Both comparisons are
+case-sensitive strings. Multiple parameters use AND. `limit` and
+`offset` are reserved for pagination. Repeated parameters and empty
+values are rejected before Google Sheets is read. An unknown column is
+rejected after the read. A filter with no matching rows returns an
+empty array. See Public read filtering in Current Project State.
+
+Column operators are implemented as `column__contains`,
+`column__starts`, `column__ends`, `column__icontains`,
+`column__istarts`, `column__iends`, and `column__wildcard`. An exact
+header with one of those names wins over the suffix. Numeric and date
+comparisons remain later work:
 
 ``` text
 price_gt
 price_lt
-contains
-starts_with
 ```
-
-Do not make the first version unnecessarily complicated.
 
 ------------------------------------------------------------------------
 
@@ -2163,58 +2599,47 @@ unchanged.
 
 # 26. Phase 19 --- CRUD API
 
-This comes after stable GET APIs.
+Implemented on `/api/v1/{slug}` after stable GET, filtering, pagination,
+and the API Playground. See Public write methods in Current Project
+State.
 
 ## Milestone 29. POST
-
-Example:
 
 ``` text
 POST /api/v1/products
 ```
 
-Body:
-
-``` json
-{
-  "name": "Pencil",
-  "price": "10"
-}
-```
-
-Append row to spreadsheet.
+Appends one row. Omitted columns become blank cells. Response includes
+the created row and its `rowNumber`.
 
 ------------------------------------------------------------------------
 
-## Milestone 30. PATCH
-
-Example:
+## Milestone 30. PUT and PATCH
 
 ``` text
-PATCH /api/v1/products/2
+PUT /api/v1/products?rowNumber=3
+PATCH /api/v1/products?rowNumber=2
 ```
 
-Update matching spreadsheet row.
+Rows are selected with the worksheet `rowNumber` query parameter, not a
+path segment and not an assumed `id` column. PUT replaces the whole
+data row. PATCH updates only supplied fields.
 
 ------------------------------------------------------------------------
 
 ## Milestone 31. DELETE
 
-Example:
-
 ``` text
-DELETE /api/v1/products/2
+DELETE /api/v1/products?rowNumber=3
 ```
 
-Delete or safely remove the corresponding row.
+Deletes one data row through `deleteDimension`. The header row is never
+deleted. Later rows shift up.
 
 Important:
 
-CRUD must be carefully designed around row identity.
-
-Do not assume the first column is always an ID.
-
-Later introduce explicit primary-key configuration.
+Row identity is positional (`rowNumber`) until explicit primary-key
+configuration exists. Do not assume the first column is an ID.
 
 ------------------------------------------------------------------------
 
@@ -2479,19 +2904,19 @@ minutes.**
 
 # 35. Phase 28 --- API Playground
 
-Create a dashboard playground.
+Implemented on `/dashboard/apis/{apiId}` for the signed-in owner.
 
-User can:
+The user can:
 
--   Select API
--   Select method
--   Enter query parameters
--   Send request
--   View response
--   View status code
--   View response time
+-   See the public endpoint and choose GET, POST, PUT, PATCH, or DELETE
+-   Enter an optional `column/value` filter for GET or `row/N` for writes
+-   Enter a JSON body for POST, PUT, and PATCH
+-   Confirm before sending DELETE
+-   Send the request with a bearer key created on that page
+-   View the status code, elapsed time, JSON response, and error message
 
-This allows users to test their API before integrating it.
+The raw key is available only until the user leaves the page. See API
+Playground and Public write methods in Current Project State.
 
 ------------------------------------------------------------------------
 
@@ -2689,6 +3114,7 @@ Store securely:
 ``` text
 DATABASE_URL
 JWT_SECRET
+TOKEN_ENCRYPTION_KEY
 GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET
 GOOGLE_PICKER_API_KEY
@@ -2701,7 +3127,22 @@ SMTP_PASSWORD
 EMAIL_FROM
 ```
 
-Never commit `.env`.
+`JWT_SECRET` must be set. Production requires at least 32 characters with
+sufficient character diversity (fail closed). Local development accepts
+16+ characters but should use a 32+ character secret before deploy.
+Generate with: `openssl rand -base64 48`
+
+`TOKEN_ENCRYPTION_KEY` is required in production. It must be a 32-byte
+key encoded as 64 hex characters or standard/base64url. Generate with:
+`openssl rand -hex 32`. Google OAuth access/refresh tokens are sealed
+with AES-256-GCM (`enc:v1:...`) when writing. Existing plaintext rows
+remain readable and are re-sealed on the next successful token use or
+refresh after the key is configured. Never log or commit this key.
+
+Never commit `.env`. Do not set `ALLOW_INSECURE_COOKIES` or
+`RATE_LIMIT_DISABLED` in production. Local integration tests that hammer
+auth endpoints against `next dev` may set `RATE_LIMIT_DISABLED=true` in
+`.env` (non-production only; production fails closed if it is enabled).
 
 ------------------------------------------------------------------------
 
@@ -2937,9 +3378,10 @@ Before launch:
 [x] API creation working
 [x] API key creation working
 [x] GET API working with an API key
+[x] POST/PUT/PATCH/DELETE working with an API key
 [ ] Search working
-[ ] Filtering working
-[ ] Pagination working
+[x] Filtering working
+[x] Pagination working
 [ ] Documentation working
 [x] API key revocation working
 [ ] Google token refresh working
@@ -3374,14 +3816,15 @@ Do not jump ahead until the current milestone works.
 The project is currently between:
 
 ``` text
-API keys
+CRUD writes
         ↓
-Pagination
+Search
 ```
 
 Password reset, Google account connection, spreadsheet listing,
-worksheet preview, API configuration, API keys, and a keyed public GET
-are implemented.
+worksheet preview, API configuration, API keys, keyed public CRUD,
+pagination, column filtering, and an API Playground on the API details
+page are implemented. Search is the next query feature.
 
 ``` text
 POST /api/apis
@@ -3391,25 +3834,24 @@ DELETE /api/apis/{apiId}
 GET  /api/apis/{apiId}/keys
 POST /api/apis/{apiId}/keys
 POST /api/apis/{apiId}/keys/{keyId}/revoke
-GET  /api/v1/{slug}
+GET    /api/v1/{slug}
+POST   /api/v1/{slug}
+PUT    /api/v1/{slug}?rowNumber={n}
+PATCH  /api/v1/{slug}?rowNumber={n}
+DELETE /api/v1/{slug}?rowNumber={n}
 ```
 
-`GET /api/v1/{slug}` reads the configuration owner's Google Sheet only
-after a valid bearer key for that API is presented. Slugs are globally
-unique. Disabled configurations and missing selections do not return
-rows. A deleted configuration returns 404. The OAuth scope remains
-`https://www.googleapis.com/auth/drive.file`.
+Public methods use a bearer key for that API. Slugs are globally
+unique. Disabled configurations and missing selections do not read or
+write the sheet. A deleted configuration returns 404. `limit` and
+`offset` page GET data rows. Writes use `rowNumber` for row selection.
+The OAuth scope remains `https://www.googleapis.com/auth/drive.file`.
 
 Dashboard navigation is implemented at `/dashboard`, `/dashboard/apis`,
 `/dashboard/apis/new`, `/dashboard/apis/{apiId}`, `/dashboard/sheets`,
 and `/dashboard/settings`. Rename, enable, disable, and delete are
-available from My APIs and from the API details page.
+available from My APIs and from the API details page. The API details
+playground can send all five public methods.
 
-The next milestone is pagination:
-
-``` text
-?page=1
-&limit=20
-```
-
-Do not add search, filtering, or write methods in that milestone.
+The next milestone is sorting. Do not add numeric or date comparisons
+in that milestone.

@@ -51,7 +51,7 @@ export default async function GoogleSheetsPage({
       />
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
-        <span className="text-zinc-500">Connection</span>
+        <span className="text-slate-500">Connection</span>
         <StatusBadge tone={googleConnected ? "success" : "neutral"}>
           {googleConnected ? "Connected" : "Not connected"}
         </StatusBadge>

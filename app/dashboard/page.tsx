@@ -48,13 +48,13 @@ export default async function DashboardPage({
 
   if (!user) {
     return (
-      <main className="min-h-screen bg-white px-6 py-16 text-zinc-900">
+      <main className="min-h-screen bg-white px-6 py-16 text-slate-900">
         <div className="mx-auto flex max-w-md flex-col gap-4">
           <Link href="/" className="text-xl font-semibold tracking-tight">
-            Sheet<span className="text-blue-600">API</span>
+            Sheet<span className="text-green-600">API</span>
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="text-sm leading-6 text-zinc-600">
+          <p className="text-sm leading-6 text-slate-600">
             Sign in to connect Google Sheets.
           </p>
           {google === "connected" ? (
@@ -93,9 +93,9 @@ export default async function DashboardPage({
       <GoogleDisconnectNotice google={google} revoked={readParam(params.revoked)} />
       {errorMessage ? <Notice tone="error">{errorMessage}</Notice> : null}
 
-      <dl className="grid overflow-hidden rounded-lg border border-zinc-200 bg-white sm:grid-cols-2">
+      <dl className="grid overflow-hidden rounded-lg border border-slate-200 bg-white sm:grid-cols-2">
         <div className="px-4 py-3">
-          <dt className="text-sm text-zinc-500">Google Sheets</dt>
+          <dt className="text-sm text-slate-500">Google Sheets</dt>
           <dd className="mt-2 flex flex-wrap items-center gap-3">
             <StatusBadge tone={googleConnected ? "success" : "neutral"}>
               {googleConnected ? "Connected" : "Not connected"}
@@ -105,20 +105,20 @@ export default async function DashboardPage({
             ) : null}
           </dd>
         </div>
-        <div className="border-t border-zinc-200 px-4 py-3 sm:border-t-0 sm:border-l">
-          <dt className="text-sm text-zinc-500">APIs</dt>
-          <dd className="mt-1 text-sm font-medium text-zinc-900">{apiCount}</dd>
+        <div className="border-t border-slate-200 px-4 py-3 sm:border-t-0 sm:border-l">
+          <dt className="text-sm text-slate-500">APIs</dt>
+          <dd className="mt-1 text-sm font-medium text-slate-900">{apiCount}</dd>
         </div>
       </dl>
 
       <section aria-labelledby="overview-shortcuts-heading">
         <h2
           id="overview-shortcuts-heading"
-          className="text-sm font-medium text-zinc-900"
+          className="text-sm font-medium text-slate-900"
         >
           Shortcuts
         </h2>
-        <ul className="mt-2 divide-y divide-zinc-200 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+        <ul className="mt-2 divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
           <li>
             {googleConnected ? (
               <ShortcutLink
@@ -129,17 +129,17 @@ export default async function DashboardPage({
             ) : (
               <a
                 href="/api/auth/google"
-                className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-zinc-50"
+                className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-slate-50"
               >
                 <span>
-                  <span className="block text-sm font-medium text-zinc-900">
+                  <span className="block text-sm font-medium text-slate-900">
                     Connect Google Sheets
                   </span>
-                  <span className="mt-0.5 block text-sm text-zinc-600">
+                  <span className="mt-0.5 block text-sm text-slate-600">
                     Grant access to the spreadsheets you want to use.
                   </span>
                 </span>
-                <span aria-hidden="true" className="text-sm text-zinc-400">
+                <span aria-hidden="true" className="text-sm text-slate-400">
                   →
                 </span>
               </a>
@@ -188,13 +188,13 @@ function ShortcutLink({
   return (
     <Link
       href={href}
-      className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-zinc-50"
+      className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-slate-50"
     >
       <span>
-        <span className="block text-sm font-medium text-zinc-900">{title}</span>
-        <span className="mt-0.5 block text-sm text-zinc-600">{detail}</span>
+        <span className="block text-sm font-medium text-slate-900">{title}</span>
+        <span className="mt-0.5 block text-sm text-slate-600">{detail}</span>
       </span>
-      <span aria-hidden="true" className="text-sm text-zinc-400">
+      <span aria-hidden="true" className="text-sm text-slate-400">
         →
       </span>
     </Link>

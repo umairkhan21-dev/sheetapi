@@ -95,7 +95,7 @@ export function DeleteApiButton({
       <dialog
         ref={dialogRef}
         aria-labelledby={`delete-api-title-${apiId}`}
-        className="m-auto w-[min(100%,28rem)] rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-900/40"
+        className="m-auto w-[min(100%,28rem)] rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-lg backdrop:bg-slate-900/40"
         onCancel={(event) => {
           if (pending) {
             event.preventDefault();
@@ -111,7 +111,7 @@ export function DeleteApiButton({
           <h2 id={`delete-api-title-${apiId}`} className="text-base font-semibold">
             Delete {apiName}?
           </h2>
-          <p className="text-sm leading-6 text-zinc-600">
+          <p className="text-sm leading-6 text-slate-600">
             This deletes the API configuration and its keys. It does not delete
             the Google spreadsheet or worksheet.
           </p>

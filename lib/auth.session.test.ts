@@ -3,12 +3,19 @@ import assert from "node:assert/strict";
 import { createHmac, randomBytes } from "node:crypto";
 import { readdir, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
-import { after, describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import bcrypt from "bcrypt";
 import { verifyAuthToken } from "./auth";
 import { PASSWORD_RESET_REQUEST_MESSAGE } from "./password";
 import { hashResetToken, issuePasswordResetToken } from "./password-reset";
 import { prisma } from "./prisma";
+
+async function clearAuthRateLimits() {
+  await prisma.$executeRaw`
+    DELETE FROM \`RateLimitBucket\`
+    WHERE \`id\` LIKE ${"auth:%"}
+  `;
+}
 
 const stamp = `${Date.now()}-${randomBytes(3).toString("hex")}`;
 const password = `Verify-${stamp}-pass`;
@@ -91,6 +98,10 @@ async function currentUser(cookie?: string) {
 }
 
 describe("application authentication", () => {
+  before(async () => {
+    await clearAuthRateLimits();
+  });
+
   it("registers, rejects duplicates and invalid input, and hides the password", async () => {
     const address = email("register");
     const created = await register({

@@ -92,7 +92,7 @@ export function DisconnectGoogleButton({
       <dialog
         ref={dialogRef}
         aria-labelledby={titleId}
-        className="m-auto w-[min(100%,28rem)] rounded-lg border border-zinc-200 bg-white p-0 text-zinc-900 shadow-lg backdrop:bg-zinc-900/40"
+        className="m-auto w-[min(100%,28rem)] rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-lg backdrop:bg-slate-900/40"
         onCancel={(event) => {
           if (pending) {
             event.preventDefault();
@@ -108,7 +108,7 @@ export function DisconnectGoogleButton({
           <h2 id={titleId} className="text-base font-semibold">
             Disconnect Google account?
           </h2>
-          <p className="text-sm leading-6 text-zinc-600">
+          <p className="text-sm leading-6 text-slate-600">
             SheetAPI will remove its stored Google authorization. It will not
             delete your Google account or any files in Google Drive. Your
             SheetAPI account, API configurations, and API keys stay saved.
